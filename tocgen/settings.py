@@ -64,12 +64,25 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'tocgen.wsgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+if DEBUG:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("PGDATABASE"),
+            "USER": os.getenv("PGUSER"),
+            "PASSWORD": os.getenv("PGPASSWORD"),
+            "HOST": os.getenv("PGHOST"),
+            "PORT": os.getenv("PGPORT"),
+            "CONN_MAX_AGE": 600,
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
