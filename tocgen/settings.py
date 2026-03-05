@@ -159,3 +159,7 @@ PLAN_LIMITS = {
     'pro':       {'max_mb': 250,  'daily_uploads': None, 'watermark': False},
     'premium':   {'max_mb': 1024, 'daily_uploads': None, 'watermark': False},
 }
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://tocgen-development.up.railway.app",
+]
