@@ -1,0 +1,21 @@
+{% extends "account/base.html" %}
+{% block title %}Connect your account — TOC Generator{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card" style="text-align:center;">
+    <div style="font-size:3rem;margin-bottom:16px;">🔗</div>
+    <h1>Almost there</h1>
+    <p class="auth-sub">Confirm your email to complete sign-up with {{ account.provider|title }}.</p>
+    <form method="post">
+      {% csrf_token %}
+      {% if form.email %}
+      <div class="form-group" style="text-align:left;">
+        <label class="form-label">Email</label>
+        <input type="email" name="email" value="{{ form.email.value }}" class="form-control">
+      </div>
+      {% endif %}
+      <button type="submit" class="btn btn-primary w-full" style="justify-content:center;">Complete sign-up →</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,9 @@
+Hello,
+
+Please confirm your email address for TOC Generator by clicking the link below:
+
+{{ activate_url }}
+
+If you did not sign up for an account, please ignore this email.
+
+— The TOC Generator team

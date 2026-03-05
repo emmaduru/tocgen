@@ -1,0 +1,12 @@
+{% extends "account/base.html" %}
+{% block title %}Confirm your email — TOC Generator{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card" style="text-align:center;">
+    <div style="font-size:3rem;margin-bottom:16px;">📧</div>
+    <h1>Check your email</h1>
+    <p class="auth-sub">We've sent a confirmation link to your email address. Click it to activate your account.</p>
+    <p class="text-small text-muted">Didn't receive it? Check your spam folder, or <a href="{% url 'account_email' %}">resend the confirmation email</a>.</p>
+  </div>
+</div>
+{% endblock %}

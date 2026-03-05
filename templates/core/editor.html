@@ -1,0 +1,2106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TOC Editor — TOC Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    :root {
+      --bg:       #0d0f14;
+      --bg2:      #13161e;
+      --bg3:      #1a1e28;
+      --border:   #252a38;
+      --border2:  #2e3448;
+      --text:     #e2e6f0;
+      --text2:    #8b92a9;
+      --text3:    #555e78;
+      --accent:   #4f8ef7;
+      --accent2:  #3a72d8;
+      --green:    #2dd98e;
+      --amber:    #f5a623;
+      --red:      #f04f54;
+      --purple:   #a78bfa;
+    }
+
+    html, body { height: 100%; margin: 0; overflow: hidden; font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+
+    #editor-layout {
+      display: flex;
+      height: calc(100vh - 38px);
+    }
+
+    #pdf-toolbar {
+      background: #13161b;
+      padding: 4px 6px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      border-bottom: 1px solid #2d3139;
+      row-gap: 3px;
+    }
+    #pdf-toolbar .toolbar-sep { color: #4a5060; padding: 0 2px; }
+    #page-jump { width: 48px; }
+
+    /* Continuous scroll container */
+    #pdf-scroll-wrap {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: auto;
+      padding: 16px 0;
+      scroll-behavior: smooth;
+      background: #1e2127;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Container for PDF pages — also centered */
+    #pdf-pages-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
+
+    /* Each rendered page */
+    .pdf-page-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 16px;
+      position: relative;
+    }
+    .pdf-page-wrapper canvas {
+      display: block;
+      box-shadow: 0 2px 20px rgba(0,0,0,.7);
+    }
+    .pdf-page-label {
+      font-size: 10px;
+      font-family: monospace;
+      color: #5a6070;
+      margin-top: 5px;
+      letter-spacing: .04em;
+    }
+    .pdf-page-wrapper.active-page .pdf-page-label {
+      color: #4e8ef7;
+    }
+    .pdf-page-wrapper.active-page canvas {
+      outline: 2px solid #4e8ef7;
+    }
+
+    /* TOC Page preview label */
+    #toc-page-inner {
+      background: #fff;
+      width: 595px;
+      min-height: 842px;
+      box-shadow: 0 2px 20px rgba(0,0,0,.7);
+      padding: 56px 60px;
+      display: flex;
+      flex-direction: column;
+      font-family: Georgia, serif;
+      font-size: 11px;
+      color: #212529;
+      position: relative;
+      outline: 2px solid #4e8ef7;
+    }
+    .toc-page-label {
+      font-size: 10px;
+      font-family: monospace;
+      color: #4e8ef7;
+      margin-top: 5px;
+      letter-spacing: .04em;
+    }
+    #toc-view-title { font-size: 18px; font-weight: 700; margin: 0 0 4px; letter-spacing: .03em; }
+    #toc-view-rule  { border: none; border-top: 2px solid #0d6efd; margin: 0 0 18px; }
+    #toc-view-subtitle { font-size: 8px; color: #6c757d; font-family: monospace; margin: -12px 0 14px; }
+    .toc-view-entry {
+      display: flex; align-items: baseline;
+      text-decoration: none; color: inherit;
+      padding: 1px 2px; border-radius: 2px;
+      transition: background .1s;
+    }
+    .toc-view-entry:hover { background: #f0f4ff; }
+    .toc-view-entry:hover .tve-title { text-decoration: underline; }
+    .tve-indent  { flex-shrink: 0; }
+    .tve-title   { flex-shrink: 0; max-width: 320px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .tve-dots    { flex: 1; border-bottom: 1px dotted #ced4da; margin: 0 5px 2px; min-width: 10px; }
+    .tve-page    { flex-shrink: 0; font-family: monospace; color: #6c757d; }
+    .tve-lv1 { padding-top: 4px; }
+    .tve-lv1 .tve-title { font-size: 11px; font-weight: 700; }
+    .tve-lv1 .tve-page  { font-size: 10px; }
+    .tve-lv2 .tve-title { font-size: 10px; }
+    .tve-lv2 .tve-page  { font-size: 9px; }
+    .tve-lv3 .tve-title { font-size: 9px; color: #495057; }
+    .tve-lv3 .tve-page  { font-size: 8.5px; }
+    .tve-lv4 .tve-title { font-size: 8.5px; color: #6c757d; }
+    .tve-lv4 .tve-page  { font-size: 8px; }
+    #toc-view-footer { margin-top: auto; padding-top: 16px; font-size: 7px; color: #adb5bd; font-family: monospace; }
+
+    /* ── Right panel with tabs ── */
+    #toc-panel {
+      width: 460px;
+      min-width: 340px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg2);
+      transition: width .2s ease, min-width .2s ease;
+      border-left: 1px solid var(--border);
+    }
+
+    /* TOC page — always centered in the scroll area */
+    #toc-virtual-page {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      margin-bottom: 16px;
+      width: 100%;
+    }
+
+    /* Desktop: pdf-panel takes remaining space */
+    #pdf-panel {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: #1e2127;
+      border-right: 1px solid #2d3139;
+    }
+    /* Tab bar */
+    #panel-tabs {
+      display: flex;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .panel-tab {
+      padding: 7px 14px;
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: #5a6070;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .panel-tab:hover { color: #9aa0b0; }
+    .panel-tab.active { color: #4e8ef7; border-bottom-color: #4e8ef7; }
+
+    /* Tab content panes */
+    .tab-pane { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .tab-pane.active { display: flex; }
+
+    /* ── TOC tab ── */
+    #toc-header {
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border2);
+      padding: 8px 10px;
+      flex-shrink: 0;
+    }
+    #toc-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 6px;
+      background: var(--bg2);
+    }
+    #toc-footer {
+      border-top: 1px solid var(--border2);
+      background: var(--bg3);
+      padding: 5px 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    /* ── Pages tab ── */
+    #pages-panel {
+      background: var(--bg2);
+    }
+    #pages-toolbar {
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border2);
+      padding: 8px 12px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #pages-grid {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* Page management row */
+    .page-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      background: var(--bg3);
+      cursor: grab;
+      transition: background .1s, border-color .1s, box-shadow .1s;
+      user-select: none;
+    }
+    .page-row:hover { background: var(--bg4, #1e2230); border-color: var(--accent); }
+    .page-row.dragging { opacity: .3; }
+    .page-row.drag-over { border-color: var(--accent); background: rgba(79,142,247,.08); box-shadow: 0 0 0 2px rgba(79,142,247,.2); }
+    .page-row.removed { opacity: .45; background: rgba(240,79,84,.06); border-color: rgba(240,79,84,.25); }
+    .page-row.removed .page-row-thumb { filter: grayscale(1); }
+
+    .page-row-drag { color: var(--text3); font-size: 12px; flex-shrink: 0; line-height: 1; }
+    .page-row-num  { font-size: 11px; font-family: monospace; color: var(--text3); width: 28px; flex-shrink: 0; text-align: right; }
+    .page-row-thumb {
+      width: 42px;
+      height: 56px;
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      background: var(--bg3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .page-row-thumb canvas { display: block; max-width: 100%; max-height: 100%; }
+    .page-row-title { flex: 1; font-size: 11.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .page-row-title small { display: block; font-size: 9.5px; color: var(--text3); }
+    .page-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .page-btn {
+      background: none; border: 1px solid var(--border2); border-radius: 4px;
+      font-size: 11px; padding: 1px 5px; cursor: pointer; color: var(--text2);
+      transition: background .1s, color .1s, border-color .1s;
+      line-height: 1.6;
+    }
+    .page-btn:hover { background: rgba(79,142,247,.12); border-color: var(--accent); color: var(--accent); }
+    .page-btn.danger:hover { background: rgba(240,79,84,.12); border-color: var(--red); color: var(--red); }
+    .page-btn.restore { border-color: rgba(245,166,35,.4); color: var(--amber); }
+    .page-btn.restore:hover { background: rgba(245,166,35,.12); border-color: var(--amber); color: var(--amber); }
+
+    #pages-footer {
+      border-top: 1px solid var(--border2);
+      background: var(--bg3);
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    /* ── TOC entry rows ── */
+    .toc-entry {
+      display: flex; align-items: center; gap: 3px;
+      padding: 2px 4px; border-radius: 3px;
+      border: 1px solid transparent;
+      margin-bottom: 1px;
+      transition: border-color .1s, background .1s;
+    }
+    .toc-entry:hover { background: var(--bg3); border-color: var(--border2); }
+    .toc-entry:hover .entry-drag, .toc-entry:hover .entry-delete { opacity: 1; }
+    .toc-entry.level-2 { padding-left: 16px; }
+    .toc-entry.level-3 { padding-left: 28px; }
+    .toc-entry.level-4 { padding-left: 40px; }
+    .toc-entry.drag-over { border-color: var(--accent); background: rgba(79,142,247,.08); }
+    .toc-entry.dragging  { opacity: .3; }
+
+    .entry-drag { cursor: grab; color: var(--text3); font-size: 11px; opacity: 0; flex-shrink: 0; user-select: none; transition: opacity .1s; line-height: 1; }
+    .entry-drag:active { cursor: grabbing; }
+    .entry-level-select { appearance: none; background: transparent; border: none; font-size: 10px; color: var(--text3); cursor: pointer; padding: 0; width: 24px; flex-shrink: 0; }
+    .entry-level-select:focus { outline: none; color: var(--accent); }
+    .entry-title-link { flex: 1; min-width: 0; display: flex; align-items: center; cursor: pointer; padding: 1px 2px; border-radius: 2px; }
+    .entry-title-link:hover .entry-title-input { color: var(--accent); }
+    .entry-title-input { flex: 1; border: none; background: transparent; font-size: 12px; color: var(--text); padding: 0 2px; min-width: 0; cursor: pointer; }
+    .entry-title-input:focus { outline: none; background: var(--bg); box-shadow: 0 0 0 1px var(--accent); cursor: text; border-radius: 2px; }
+    .toc-entry.level-1 .entry-title-input { font-weight: 600; }
+    .toc-entry.level-2 .entry-title-input { color: var(--text2); }
+    .toc-entry.level-3 .entry-title-input { color: var(--text3); font-size: 11px; }
+    .toc-entry.level-4 .entry-title-input { color: var(--text3); font-size: 10.5px; }
+    .entry-dots { flex: 0 1 50px; border-bottom: 1px dotted var(--border2); min-width: 8px; }
+    .entry-page-input { width: 38px; border: 1px solid transparent; background: transparent; font-family: monospace; font-size: 11px; color: var(--text3); text-align: right; padding: 0 2px; border-radius: 2px; flex-shrink: 0; cursor: pointer; }
+    .entry-page-input:hover { color: var(--accent); }
+    .entry-page-input:focus { outline: none; background: var(--bg); border-color: var(--accent); color: var(--text); cursor: text; }
+    .entry-delete { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 14px; padding: 0 2px; opacity: 0; flex-shrink: 0; line-height: 1; transition: opacity .1s; }
+    .entry-delete:hover { color: var(--red); }
+
+    /* Highlight entries whose page was moved in the page manager */
+    .toc-entry.reordered-page { background: rgba(79,142,247,.08); border-color: rgba(79,142,247,.3) !important; }
+
+    /* ── Sidebar responsive toggle ── */
+    #sidebar-toggle {
+      display: none;
+      position: fixed;
+      bottom: 16px; right: 16px;
+      z-index: 1000;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: #4e8ef7;
+      color: #fff;
+      border: none;
+      font-size: 18px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.35);
+      cursor: pointer;
+      align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    #sidebar-toggle:hover { background: #2c6fd4; }
+
+    /* ── Style tab ── */
+    .style-section { padding: 10px 12px; border-bottom: 1px solid var(--border2); }
+    .style-section-label {
+      font-size: .65rem; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--text3);
+      margin-bottom: 8px; display: block;
+    }
+    .font-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .font-card {
+      border: 1.5px solid var(--border2); border-radius: 6px;
+      padding: 7px 9px; cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .font-card:hover { border-color: var(--accent); background: rgba(79,142,247,.08); }
+    .font-card.selected { border-color: var(--accent); background: rgba(79,142,247,.12); }
+    .font-card-preview { font-size: 14px; line-height: 1.3; margin-bottom: 2px; }
+    .font-card-name { font-size: 10px; color: var(--text3); }
+    .size-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .size-row label { font-size: .68rem; color: var(--text2); width: 26px; flex-shrink: 0; }
+    .size-row input[type=range] { flex: 1; accent-color: #4e8ef7; height: 4px; cursor: pointer; }
+    .size-row .size-val { font-size: .68rem; font-family: monospace; color: var(--text2); width: 26px; text-align: right; }
+
+    /* ── Desktop collapse toggle — floats on the border between panels ── */
+    #btn-toggle-sidebar {
+      position: absolute;
+      top: 50%;
+      right: 0;
+      transform: translateY(-50%);
+      z-index: 50;
+      width: 18px;
+      height: 48px;
+      background: #2d3139;
+      border: none;
+      border-radius: 6px 0 0 6px;
+      color: #9aa0b0;
+      cursor: pointer;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .15s, color .15s;
+      line-height: 1;
+      padding: 0;
+    }
+    #btn-toggle-sidebar:hover { background: #4e8ef7; color: #fff; }
+
+    /* pdf-panel needs relative positioning for the toggle button */
+    #pdf-panel { position: relative; }
+
+    /* When sidebar is collapsed on desktop */
+    #editor-layout.sidebar-collapsed #toc-panel {
+      width: 0 !important;
+      min-width: 0 !important;
+      overflow: hidden;
+    }
+    #btn-toggle-sidebar .toggle-icon-collapse { display: inline; }
+    #btn-toggle-sidebar .toggle-icon-expand   { display: none; }
+    #editor-layout.sidebar-collapsed #btn-toggle-sidebar .toggle-icon-collapse { display: none; }
+    #editor-layout.sidebar-collapsed #btn-toggle-sidebar .toggle-icon-expand   { display: inline; }
+
+
+    /* ── Navbar responsive ── */
+    @media (max-width: 480px) {
+      #status-msg { max-width: 28vw !important; font-size:.6rem !important; }
+    }
+    @media (max-width: 360px) {
+      #status-msg { display: none !important; }
+    }
+    @media (max-width: 900px) {
+      #pdf-panel { flex: 1; width: 100% !important; }
+      #toc-panel {
+        position: fixed !important;
+        top: 38px; right: 0; bottom: 0;
+        width: min(460px, 92vw) !important;
+        min-width: 0 !important;
+        z-index: 999 !important;
+        background: var(--bg2) !important;
+        transform: translateX(110%) !important;
+        transition: transform .25s cubic-bezier(.4,0,.2,1) !important;
+        box-shadow: -6px 0 28px rgba(0,0,0,.45) !important;
+        border-left: 1px solid var(--border) !important;
+        overflow: hidden !important;
+      }
+      #toc-panel.open {
+        transform: translateX(0) !important;
+        overflow: auto !important;
+      }
+      #editor-layout.sidebar-collapsed #toc-panel {
+        width: min(460px, 92vw) !important;
+      }
+      #sidebar-toggle { display: flex; }
+      #editor-layout { height: calc(100vh - 38px); overflow: hidden; }
+      #btn-toggle-sidebar { display: none !important; }
+    }
+    @media (max-width: 500px) {
+      #toc-panel { width: 100vw !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav style="height:44px; flex-shrink:0; background:rgba(13,15,20,.96); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 12px; gap:10px; overflow:hidden;">
+  <a href="/dashboard/" style="display:inline-flex;align-items:center;gap:5px;color:var(--text2);font-size:.75rem;font-weight:500;text-decoration:none;padding:4px 8px;border-radius:6px;border:1px solid transparent;white-space:nowrap;transition:all .15s;" onmouseover="this.style.background='var(--bg3)';this.style.borderColor='var(--border2)';this.style.color='var(--text)'" onmouseout="this.style.background='';this.style.borderColor='transparent';this.style.color='var(--text2)'">← Dashboard</a>
+  <a href="/" style="display:flex;align-items:center;gap:7px;text-decoration:none;flex-shrink:0;">
+    <div style="width:24px;height:24px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;font-weight:700;">T</div>
+    <span style="font-size:.85rem;font-weight:700;color:var(--text);letter-spacing:.01em;">TOC Generator</span>
+  </a>
+  <span id="status-msg" style="font-size:.67rem;font-family:monospace;color:var(--text3);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40vw;">Loading…</span>
+  <a href="/" style="display:inline-flex;align-items:center;font-size:.72rem;font-weight:500;color:var(--text2);text-decoration:none;padding:4px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);white-space:nowrap;transition:all .15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--text2)'">+ New PDF</a>
+</nav>
+
+<!-- Floating sidebar toggle (mobile) -->
+<button id="sidebar-toggle" title="Toggle panel">☰</button>
+
+<!-- No session data fallback -->
+<div id="no-data" style="display:none; max-width:480px; margin:80px auto; padding:0 24px; text-align:center;">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:48px 32px;">
+    <div style="font-size:2.5rem;margin-bottom:16px;">📄</div>
+    <p style="color:var(--text2);margin-bottom:24px;font-size:.95rem;">No PDF loaded. Please go back and upload a file first.</p>
+    <a href="/" style="display:inline-flex;align-items:center;gap:6px;padding:10px 22px;background:var(--accent);color:#fff;border-radius:8px;font-size:.875rem;font-weight:500;text-decoration:none;">Upload a PDF</a>
+  </div>
+</div>
+
+<!-- Main editor layout -->
+<div id="editor-layout">
+
+  <!-- Left: PDF viewer (continuous scroll) -->
+  <div id="pdf-panel">
+    <div id="pdf-toolbar">
+      <!-- Zoom -->
+      <button id="btn-zoom-out" style="font-size:.72rem;padding:2px 8px;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:5px;cursor:pointer;">−</button>
+      <span id="zoom-level" style="font-size:.7rem;font-family:monospace;min-width:36px;text-align:center;color:var(--text3);">120%</span>
+      <button id="btn-zoom-in" style="font-size:.72rem;padding:2px 8px;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:5px;cursor:pointer;">+</button>
+      <span class="toolbar-sep">│</span>
+      <!-- Page jump -->
+      <span style="font-size:.7rem;font-family:monospace;color:var(--text3);">p.</span>
+      <input id="page-jump" type="number" min="1" value="1" style="width:48px;font-size:.72rem;font-family:monospace;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:5px;padding:2px 4px;text-align:center;outline:none;">
+      <span style="font-size:.7rem;font-family:monospace;color:var(--text3);">/ <span id="total-pages-label">—</span></span>
+      <button id="btn-go-page" style="font-size:.7rem;padding:2px 8px;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:5px;cursor:pointer;">Go</button>
+      <span class="toolbar-sep">│</span>
+      <!-- TOC toggle in viewer -->
+      <button id="btn-toc-page" title="Show/hide TOC page in viewer" style="font-size:.65rem;padding:2px 8px;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:5px;cursor:pointer;">◧ TOC</button>
+      <span id="page-range-badge" style="margin-left:auto;font-size:.65rem;font-family:monospace;color:var(--text3);"></span>
+    </div>
+
+    <!-- Continuous scroll PDF + TOC page -->
+    <div id="pdf-scroll-wrap">
+      <!-- TOC virtual page — inserted before PDF pages when toggled on -->
+      <div id="toc-virtual-page">
+        <div id="toc-page-inner">
+          <h2 id="toc-view-title">TABLE OF CONTENTS</h2>
+          <hr id="toc-view-rule">
+          <div id="toc-view-subtitle"></div>
+          <div id="toc-view-entries"></div>
+          <div id="toc-view-footer"></div>
+        </div>
+        <div class="toc-page-label">TOC PAGE PREVIEW</div>
+      </div>
+      <!-- PDF pages rendered here -->
+      <div id="pdf-pages-container"></div>
+    </div>
+
+    <!-- Desktop sidebar toggle — sits on the right edge of the PDF panel -->
+    <button id="btn-toggle-sidebar" title="Toggle sidebar">
+      <span class="toggle-icon-collapse">›</span>
+      <span class="toggle-icon-expand">‹</span>
+    </button>
+  </div>
+
+  <!-- Right: tabbed panel -->
+  <div id="toc-panel">
+
+    <!-- Tab bar -->
+    <div id="panel-tabs">
+      <div class="panel-tab active" data-tab="toc-tab">📑 Contents</div>
+      <div class="panel-tab" data-tab="pages-tab">📄 Pages</div>
+      <div class="panel-tab" data-tab="style-tab">🎨 Style</div>
+    </div>
+
+    <!-- ══ TOC Tab ══ -->
+    <div id="toc-tab" class="tab-pane active">
+      <div id="toc-header">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="font-size:.85rem;font-weight:600;color:var(--text);">Table of Contents</span>
+          <span id="auto-badge" style="display:none;font-size:.6rem;font-weight:600;background:rgba(245,166,35,.15);color:var(--amber);border:1px solid rgba(245,166,35,.3);border-radius:20px;padding:2px 8px;letter-spacing:.04em;">Auto-generated</span>
+          <button id="btn-add-entry" style="margin-left:auto;font-size:.7rem;padding:3px 10px;background:var(--bg);color:var(--text2);border:1px solid var(--border2);border-radius:6px;cursor:pointer;font-family:inherit;transition:all .15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--text2)'">+ Add entry</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <label style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;color:var(--text3);">Pages</label>
+          <input type="number" id="start-page" min="1" value="1" style="width:60px;font-size:.75rem;font-family:monospace;padding:4px 6px;background:var(--bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;outline:none;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
+          <span style="color:var(--text3);">–</span>
+          <input type="number" id="end-page" min="1" style="width:60px;font-size:.75rem;font-family:monospace;padding:4px 6px;background:var(--bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;outline:none;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
+          <button id="btn-reset-range" style="font-size:.7rem;padding:3px 8px;background:var(--bg);color:var(--text3);border:1px solid var(--border2);border-radius:6px;cursor:pointer;font-family:inherit;">Reset</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+          <label style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;color:var(--text3);" title="Shift all page numbers. Use if page 1 of your PDF is not page 1 of the document (e.g. after a cover page or front matter).">Offset</label>
+          <input type="number" id="page-offset" value="0" style="width:64px;font-size:.75rem;font-family:monospace;padding:4px 6px;background:var(--bg);color:var(--text);border:1px solid var(--border2);border-radius:6px;outline:none;" title="Shift all page numbers by this amount" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'">
+          <span id="offset-hint" style="font-size:.65rem;font-family:monospace;font-style:italic;color:var(--text3);"></span>
+          <button id="btn-reset-offset" style="margin-left:auto;font-size:.7rem;padding:3px 8px;background:var(--bg);color:var(--text3);border:1px solid var(--border2);border-radius:6px;cursor:pointer;font-family:inherit;">Reset</button>
+        </div>
+      </div>
+      <div id="toc-list">
+        <p id="toc-empty" style="color:var(--text3);text-align:center;font-style:italic;margin-top:20px;font-size:.85rem;">No entries yet.</p>
+      </div>
+      <div id="toc-footer">
+        <span id="toc-count" style="color:var(--text3);margin-right:auto;font-size:.7rem;font-family:monospace;">0 entries</span>
+      </div>
+    </div>
+
+    <!-- ══ Pages Tab ══ -->
+    <div id="pages-tab" class="tab-pane">
+      <div id="pages-toolbar">
+        <span style="font-size:.85rem;font-weight:600;color:var(--text);">Page Manager</span>
+        <span id="pages-count" style="color:var(--text3);margin-left:8px;font-size:.7rem;font-family:monospace;"></span>
+        <button id="btn-restore-all" style="margin-left:auto;font-size:.7rem;padding:3px 10px;background:var(--bg);color:var(--text2);border:1px solid var(--border2);border-radius:6px;cursor:pointer;font-family:inherit;display:none;">Restore all</button>
+      </div>
+      <div id="pages-grid"></div>
+      <div id="pages-footer">
+        <label style="display:flex;align-items:center;gap:8px;margin:0;color:var(--text3);font-size:.7rem;cursor:pointer;">
+          <input type="checkbox" id="chk-sync-toc" checked style="cursor:pointer;accent-color:var(--accent);">
+          Sync TOC order with page order
+        </label>
+      </div>
+    </div>
+
+    <!-- ══ Style Tab ══ -->
+    <div id="style-tab" class="tab-pane">
+
+      <!-- Font family -->
+      <div class="style-section">
+        <span class="style-section-label">Font Family</span>
+        <div class="font-grid" id="font-grid">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <!-- Font sizes -->
+      <div class="style-section">
+        <span class="style-section-label">Font Sizes</span>
+        <div class="size-row">
+          <label>H1</label>
+          <input type="range" id="sz-h1" min="8" max="18" step="0.5">
+          <span class="size-val" id="sz-h1-val">11</span>
+        </div>
+        <div class="size-row">
+          <label>H2</label>
+          <input type="range" id="sz-h2" min="7" max="16" step="0.5">
+          <span class="size-val" id="sz-h2-val">10</span>
+        </div>
+        <div class="size-row">
+          <label>H3</label>
+          <input type="range" id="sz-h3" min="6" max="14" step="0.5">
+          <span class="size-val" id="sz-h3-val">9</span>
+        </div>
+        <div class="size-row">
+          <label>H4</label>
+          <input type="range" id="sz-h4" min="6" max="12" step="0.5">
+          <span class="size-val" id="sz-h4-val">8</span>
+        </div>
+        <div class="size-row">
+          <label title="Title heading size">Title</label>
+          <input type="range" id="sz-title" min="12" max="28" step="1">
+          <span class="size-val" id="sz-title-val">18</span>
+        </div>
+      </div>
+
+      <!-- Reset -->
+      <div class="style-section">
+        <button id="btn-reset-style" style="width:100%;font-size:.72rem;padding:6px;background:var(--bg);color:var(--text2);border:1px solid var(--border2);border-radius:6px;cursor:pointer;font-family:inherit;transition:all .15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--text2)'">↺ Reset to defaults</button>
+      </div>
+
+      <!-- Mini preview -->
+      <div class="style-section flex-grow-1" style="overflow-y:auto;">
+        <span class="style-section-label">Preview</span>
+        <div id="style-preview" style="background:#fff; border:1px solid #dee2e6; border-radius:4px; padding:14px 16px; font-size:10px; line-height:1.6; color:#212529;">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ══ Shared export footer — always visible ══ -->
+    <div id="shared-footer" style="border-top:2px solid var(--border2); background:var(--bg3); padding:8px 12px; display:flex; align-items:center; gap:6px; flex-shrink:0;">
+      <button id="btn-dl-txt" style="flex:1;font-size:.72rem;padding:7px;background:var(--bg);color:var(--text2);border:1px solid var(--border2);border-radius:7px;cursor:pointer;font-family:inherit;font-weight:500;transition:all .15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--text2)'">↓ TXT</button>
+      <button id="btn-dl-pdf-pages" style="flex:1;font-size:.72rem;padding:7px;background:var(--accent);color:#fff;border:none;border-radius:7px;cursor:pointer;font-family:inherit;font-weight:600;transition:background .15s;" onmouseover="this.style.background='var(--accent2)'" onmouseout="this.style.background='var(--accent)'">↓ Export PDF</button>
+    </div>
+
+  </div><!-- /toc-panel -->
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+</script>
+
+<script>
+/* ================================================================
+   State
+================================================================ */
+const state = {
+  pdfDoc: null,
+  totalPages: 0,
+  scale: 1.2,
+  headings: [],
+  filteredHeadings: [],
+  startPage: 1,
+  endPage: 1,
+  pdfArrayBuffer: null,
+  dragSrcIdx: null,       // for TOC drag
+  pageDragSrcIdx: null,   // for page manager drag
+  showToc: true,          // whether TOC virtual page is shown in viewer
+  watermark: false,       // set from API response — adds watermark to exported PDF
+  pageOffset: 0,          // display shift: shown page = raw PDF page + pageOffset
+  syncTocWithPages: true, // when true, page-order changes re-sort TOC entries
+  // Page manager state.
+  // Entries are either:
+  //   { type: 'toc',  removed: bool }              — the TOC cover page
+  //   { type: 'pdf',  origIndex: number (0-based), removed: bool }
+  pageOrder: [],
+  renderQueue: new Map(),     // origIndex → canvas element
+  renderTasks: new Map(),     // origIndex → pdfjs RenderTask (for cancellation)
+  currentVisiblePage: 1,
+  // TOC appearance
+  tocStyle: {
+    fontKey:  'helvetica',  // key into FONT_OPTIONS
+    sz: { title: 18, h1: 11, h2: 10, h3: 9, h4: 8 },
+  },
+};
+
+/* ================================================================
+   DOM refs
+================================================================ */
+const $ = id => document.getElementById(id);
+const statusMsg       = $('status-msg');
+const noData          = $('no-data');
+const editorLayout    = $('editor-layout');
+const pageJump        = $('page-jump');
+const totalPagesLbl   = $('total-pages-label');
+const btnZoomIn       = $('btn-zoom-in');
+const btnZoomOut      = $('btn-zoom-out');
+const btnTocPage      = $('btn-toc-page');
+const zoomLevel       = $('zoom-level');
+const startPageIn     = $('start-page');
+const endPageIn       = $('end-page');
+const tocList         = $('toc-list');
+const tocEmpty        = $('toc-empty');
+const tocCount        = $('toc-count');
+const pageRangeBadge  = $('page-range-badge');
+const btnDlTxt        = $('btn-dl-txt');
+const btnDlPdfPages   = $('btn-dl-pdf-pages');
+const btnResetRange   = $('btn-reset-range');
+const btnAddEntry     = $('btn-add-entry');
+const autoBadge       = $('auto-badge');
+const pageOffsetIn    = $('page-offset');
+const offsetHint      = $('offset-hint');
+const chkSyncToc      = $('chk-sync-toc');
+const tocVirtualPage  = $('toc-virtual-page');
+const tocViewEntries  = $('toc-view-entries');
+const tocViewSubtitle = $('toc-view-subtitle');
+const tocViewFooter   = $('toc-view-footer');
+const pdfScrollWrap   = $('pdf-scroll-wrap');
+const pdfPagesContainer = $('pdf-pages-container');
+const pagesGrid       = $('pages-grid');
+const pagesCount      = $('pages-count');
+const btnRestoreAll   = $('btn-restore-all');
+
+function setStatus(msg) { statusMsg.textContent = msg; }
+
+/* ================================================================
+   Sidebar responsive toggle
+================================================================ */
+$('sidebar-toggle').addEventListener('click', () => {
+  $('toc-panel').classList.toggle('open');
+});
+// Close sidebar when clicking outside on mobile
+document.addEventListener('click', e => {
+  const panel = $('toc-panel');
+  const toggle = $('sidebar-toggle');
+  if (panel.classList.contains('open') && !panel.contains(e.target) && e.target !== toggle) {
+    panel.classList.remove('open');
+  }
+});
+
+/* ================================================================
+   Desktop sidebar collapse/expand — single toggle button on PDF panel edge
+================================================================ */
+const btnToggleSidebar = $('btn-toggle-sidebar');
+
+btnToggleSidebar.addEventListener('click', () => {
+  editorLayout.classList.toggle('sidebar-collapsed');
+});
+
+/* ================================================================
+   Style tab
+================================================================ */
+const FONT_OPTIONS = [
+  { key: 'helvetica',      label: 'Helvetica',    preview: 'Aa',  previewFont: 'Arial, sans-serif',         pdfBold: 'HelveticaBold',        pdfReg: 'Helvetica',         pdfMono: 'Courier' },
+  { key: 'times',          label: 'Times',         preview: 'Aa',  previewFont: 'Georgia, serif',            pdfBold: 'TimesRomanBold',       pdfReg: 'TimesRoman',        pdfMono: 'Courier' },
+  { key: 'courier',        label: 'Courier',       preview: 'Aa',  previewFont: 'Courier New, monospace',    pdfBold: 'CourierBold',          pdfReg: 'Courier',           pdfMono: 'Courier' },
+  { key: 'symbol',         label: 'Helvetica Obl', preview: 'Aa',  previewFont: 'Arial, sans-serif',         pdfBold: 'HelveticaBoldOblique', pdfReg: 'HelveticaOblique',  pdfMono: 'Courier' },
+];
+
+const DEFAULT_STYLE = {
+  fontKey: 'helvetica',
+  sz: { title: 18, h1: 11, h2: 10, h3: 9, h4: 8 },
+};
+
+function getActiveFontOption() {
+  return FONT_OPTIONS.find(f => f.key === state.tocStyle.fontKey) || FONT_OPTIONS[0];
+}
+
+function buildFontGrid() {
+  const grid = $('font-grid');
+  grid.innerHTML = '';
+  FONT_OPTIONS.forEach(f => {
+    const card = document.createElement('div');
+    card.className = 'font-card' + (f.key === state.tocStyle.fontKey ? ' selected' : '');
+    card.innerHTML = `<div class="font-card-preview" style="font-family:${f.previewFont};">${f.preview}</div><div class="font-card-name">${f.label}</div>`;
+    card.addEventListener('click', () => {
+      state.tocStyle.fontKey = f.key;
+      buildFontGrid();
+      updateStylePreview();
+      updateTocPageView();
+    });
+    grid.appendChild(card);
+  });
+}
+
+function initStyleSliders() {
+  const sliders = [
+    { id: 'sz-title', key: 'title', valId: 'sz-title-val' },
+    { id: 'sz-h1',    key: 'h1',    valId: 'sz-h1-val' },
+    { id: 'sz-h2',    key: 'h2',    valId: 'sz-h2-val' },
+    { id: 'sz-h3',    key: 'h3',    valId: 'sz-h3-val' },
+    { id: 'sz-h4',    key: 'h4',    valId: 'sz-h4-val' },
+  ];
+  sliders.forEach(({ id, key, valId }) => {
+    const el = $(id);
+    const vl = $(valId);
+    el.value = state.tocStyle.sz[key];
+    vl.textContent = state.tocStyle.sz[key];
+    el.addEventListener('input', () => {
+      state.tocStyle.sz[key] = parseFloat(el.value);
+      vl.textContent = el.value;
+      updateStylePreview();
+      updateTocPageView();
+    });
+  });
+}
+
+function syncSlidersToState() {
+  [['sz-title','title'],['sz-h1','h1'],['sz-h2','h2'],['sz-h3','h3'],['sz-h4','h4']].forEach(([id, key]) => {
+    const el = $(id); if (!el) return;
+    el.value = state.tocStyle.sz[key];
+    $(id + '-val').textContent = state.tocStyle.sz[key];
+  });
+}
+
+function updateStylePreview() {
+  const fo  = getActiveFontOption();
+  const sz  = state.tocStyle.sz;
+  const preview = $('style-preview');
+  preview.style.fontFamily = fo.previewFont;
+  preview.innerHTML = `
+    <div style="font-size:${sz.title * 0.72}px; font-weight:700; border-bottom:1.5px solid #c0392b; padding-bottom:4px; margin-bottom:8px; letter-spacing:.02em;">TABLE OF CONTENTS</div>
+    <div style="font-size:${sz.h1 * 0.72}px; font-weight:700; margin-bottom:3px; display:flex; justify-content:space-between;"><span>Chapter 1</span><span style="font-family:monospace;">1</span></div>
+    <div style="font-size:${sz.h2 * 0.72}px; padding-left:12px; margin-bottom:2px; color:#495057; display:flex; justify-content:space-between;"><span>Section 1.1</span><span style="font-family:monospace;">2</span></div>
+    <div style="font-size:${sz.h3 * 0.72}px; padding-left:24px; margin-bottom:2px; color:#6c757d; display:flex; justify-content:space-between;"><span>Subsection 1.1.1</span><span style="font-family:monospace;">3</span></div>
+    <div style="font-size:${sz.h1 * 0.72}px; font-weight:700; margin-bottom:3px; display:flex; justify-content:space-between; margin-top:4px;"><span>Chapter 2</span><span style="font-family:monospace;">5</span></div>
+    <div style="font-size:${sz.h2 * 0.72}px; padding-left:12px; color:#495057; display:flex; justify-content:space-between;"><span>Section 2.1</span><span style="font-family:monospace;">6</span></div>
+  `;
+}
+
+$('btn-reset-style').addEventListener('click', () => {
+  state.tocStyle = JSON.parse(JSON.stringify(DEFAULT_STYLE));
+  buildFontGrid();
+  syncSlidersToState();
+  updateStylePreview();
+  updateTocPageView();
+});
+
+/* ================================================================
+   Page offset helpers
+   state.headings stores RAW 1-based PDF page numbers.
+   Displayed / exported TOC text = raw + pageOffset.
+   Navigation links always use raw numbers so they work correctly.
+================================================================ */
+function rawToDisplay(rawPage) { return rawPage + state.pageOffset; }
+function displayToRaw(displayPage) { return displayPage - state.pageOffset; }
+
+function updateOffsetHint() {
+  const off = state.pageOffset;
+  if (off === 0) { offsetHint.textContent = ''; return; }
+  if (off > 0) offsetHint.textContent = `PDF p.1 → shown as p.${1 + off}`;
+  else         offsetHint.textContent = `PDF p.${1 - off} → shown as p.1`;
+}
+
+pageOffsetIn.addEventListener('input', debounce(() => {
+  const v = parseInt(pageOffsetIn.value, 10);
+  state.pageOffset = isNaN(v) ? 0 : v;
+  updateOffsetHint();
+  filterAndRenderTOC();
+  updateTocPageView();
+}, 250));
+
+$('btn-reset-offset').addEventListener('click', () => {
+  state.pageOffset = 0;
+  pageOffsetIn.value = 0;
+  updateOffsetHint();
+  filterAndRenderTOC();
+  updateTocPageView();
+});
+
+/* ================================================================
+   TOC ↔ Page order sync
+================================================================ */
+chkSyncToc.addEventListener('change', () => {
+  state.syncTocWithPages = chkSyncToc.checked;
+  filterAndRenderTOC();
+  updateTocPageView();
+});
+
+/**
+ * When syncTocWithPages is on, return headings sorted/filtered to
+ * match the active page order. Removed pages drop their TOC entries;
+ * reordered pages sort entries to match the new sequence.
+ */
+function applyPageOrderSync(headings) {
+  if (!state.syncTocWithPages) return headings;
+
+  const activePdfSlots = state.pageOrder.filter(p => p.type === 'pdf' && !p.removed);
+  // Check if anything actually changed from natural order
+  const isNaturalOrder = activePdfSlots.every((p, i) => p.origIndex === i);
+  const noRemovals     = activePdfSlots.length === state.totalPages;
+  if (isNaturalOrder && noRemovals) return headings;
+
+  const activeOrigIndices = activePdfSlots.map(p => p.origIndex);
+  const activeSet         = new Set(activeOrigIndices);
+
+  // Drop headings whose raw page (1-based) maps to a removed page
+  const kept = headings.filter(h => activeSet.has(h.page - 1));
+
+  // Sort by the position of the page in the active order
+  const posMap = new Map(activeOrigIndices.map((origIdx, pos) => [origIdx, pos]));
+  kept.sort((a, b) => (posMap.get(a.page - 1) ?? Infinity) - (posMap.get(b.page - 1) ?? Infinity));
+
+  return kept;
+}
+
+/* ================================================================
+   Tabs
+================================================================ */
+document.querySelectorAll('.panel-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    $(tab.dataset.tab).classList.add('active');
+  });
+});
+
+/* ================================================================
+   Boot from sessionStorage
+================================================================ */
+window.addEventListener('DOMContentLoaded', async () => {
+  // Init style tab
+  buildFontGrid();
+  initStyleSliders();
+  updateStylePreview();
+
+  const b64      = sessionStorage.getItem('toc_pdf_b64');
+  const apiRaw   = sessionStorage.getItem('toc_api_data');
+  const filename = sessionStorage.getItem('toc_filename') || 'document.pdf';
+
+  if (!b64 || !apiRaw) {
+    editorLayout.style.display = 'none';
+    noData.style.display = 'block';
+    return;
+  }
+
+  setStatus(`Loading "${filename}"…`);
+
+  try {
+    const apiData = JSON.parse(apiRaw);
+    const binary  = atob(b64);
+    const bytes   = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    state.pdfArrayBuffer = bytes.buffer;
+
+    state.pdfDoc = await pdfjsLib.getDocument({ data: state.pdfArrayBuffer.slice(0) }).promise;
+    state.totalPages = state.pdfDoc.numPages;
+
+    state.startPage = 1;
+    state.endPage   = state.totalPages;
+
+    totalPagesLbl.textContent = state.totalPages;
+    startPageIn.value = 1;                  startPageIn.max = state.totalPages;
+    endPageIn.value   = state.totalPages;   endPageIn.max   = state.totalPages;
+    pageJump.max      = state.totalPages;
+
+    // Init page order — TOC page first, then all PDF pages
+    state.pageOrder = [
+      { type: 'toc', removed: false },
+      ...Array.from({ length: state.totalPages }, (_, i) => ({ type: 'pdf', origIndex: i, removed: false }))
+    ];
+
+    state.headings = apiData.headings || [];
+    state.watermark = apiData.watermark || false;
+
+    if (apiData.has_outline) {
+      autoBadge.classList.add('d-none');
+      setStatus(`"${filename}" — ${state.totalPages} pages · ${state.headings.length} bookmark(s) extracted`);
+    } else {
+      autoBadge.classList.remove('d-none');
+      setStatus(`"${filename}" — ${state.totalPages} pages · TOC auto-generated (${state.headings.length} entries)`);
+    }
+
+    filterAndRenderTOC();
+    updateTocPageView();
+    await renderAllPages();
+    applyTocZoom();
+    renderPagesPanel();
+    setupScrollObserver();
+
+  } catch (err) {
+    setStatus('Error loading PDF: ' + err.message);
+    console.error(err);
+  }
+});
+
+/* ================================================================
+   Render all PDF pages into the scroll container
+================================================================ */
+async function renderAllPages() {
+  pdfPagesContainer.innerHTML = '';
+  state.renderQueue.clear();
+
+  // Sync TOC virtual page visibility with pageOrder
+  const tocEntry = state.pageOrder.find(p => p.type === 'toc');
+  const tocVisible = tocEntry && !tocEntry.removed && state.showToc;
+  tocVirtualPage.style.display = tocVisible ? '' : 'none';
+
+  // Reorder: put TOC virtual page at correct position in DOM
+  const tocOrderIdx = state.pageOrder.findIndex(p => p.type === 'toc');
+  const pdfBeforeToc = state.pageOrder.slice(0, tocOrderIdx).filter(p => p.type === 'pdf' && !p.removed);
+  if (pdfBeforeToc.length === 0) {
+    // TOC is first — it should be above pdf-pages-container (default DOM order)
+    pdfScrollWrap.insertBefore(tocVirtualPage, pdfPagesContainer);
+  } else {
+    // TOC is somewhere in the middle/end — we'll render it as a canvas-less
+    // placeholder div in pdfPagesContainer at the right slot
+    pdfScrollWrap.appendChild(tocVirtualPage); // move after container temporarily, then reposition below
+  }
+
+  let insertBeforeEl = null; // we'll find the right insertion point
+
+  for (let i = 0; i < state.pageOrder.length; i++) {
+    const pg = state.pageOrder[i];
+
+    if (pg.type === 'toc') {
+      // We'll handle DOM positioning after building the PDF page wrappers
+      continue;
+    }
+
+    if (pg.removed) continue;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'pdf-page-wrapper';
+    wrapper.dataset.pageNum = pg.origIndex + 1;
+    wrapper.dataset.orderIdx = i;
+
+    const canvas = document.createElement('canvas');
+    const label  = document.createElement('div');
+    label.className = 'pdf-page-label';
+    label.textContent = `PAGE ${pg.origIndex + 1}`;
+
+    wrapper.appendChild(canvas);
+    wrapper.appendChild(label);
+    pdfPagesContainer.appendChild(wrapper);
+    state.renderQueue.set(pg.origIndex, canvas);
+  }
+
+  // Now reposition the TOC virtual page in the scroll based on its order index
+  if (tocEntry && !tocEntry.removed) {
+    // Find the PDF page wrapper that should come after the TOC
+    const pagesAfterToc = state.pageOrder.slice(tocOrderIdx + 1).filter(p => p.type === 'pdf' && !p.removed);
+    if (pagesAfterToc.length > 0) {
+      const firstAfter = pdfPagesContainer.querySelector(`[data-page-num="${pagesAfterToc[0].origIndex + 1}"]`);
+      if (firstAfter) {
+        // Insert toc-virtual-page as a flex item inside pdfPagesContainer, before firstAfter
+        pdfPagesContainer.insertBefore(tocVirtualPage, firstAfter);
+      } else {
+        pdfPagesContainer.appendChild(tocVirtualPage);
+      }
+    } else {
+      // TOC is last
+      pdfPagesContainer.appendChild(tocVirtualPage);
+    }
+    // Move tocVirtualPage into pdfPagesContainer
+    if (tocOrderIdx === 0) {
+      // TOC is first — keep it before all pages; put it back before pdfPagesContainer
+      pdfScrollWrap.insertBefore(tocVirtualPage, pdfScrollWrap.firstChild);
+      // Actually prepend inside pdfPagesContainer approach is cleaner:
+      pdfPagesContainer.insertBefore(tocVirtualPage, pdfPagesContainer.firstChild);
+    }
+    tocVirtualPage.style.display = '';
+  } else if (tocEntry && tocEntry.removed) {
+    tocVirtualPage.style.display = 'none';
+  }
+
+  // Render pages (batch to avoid blocking)
+  const batchSize = 3;
+  const indices = [...state.renderQueue.keys()];
+  for (let b = 0; b < indices.length; b += batchSize) {
+    const batch = indices.slice(b, b + batchSize);
+    await Promise.all(batch.map(idx => renderPageOnCanvas(idx + 1, state.renderQueue.get(idx))));
+  }
+}
+
+async function renderPageOnCanvas(pageNum, canvas) {
+  const origIndex = pageNum - 1;
+
+  // Cancel any in-flight render for this page slot
+  if (state.renderTasks.has(origIndex)) {
+    try { state.renderTasks.get(origIndex).cancel(); } catch (_) {}
+    state.renderTasks.delete(origIndex);
+  }
+
+  try {
+    const page = await state.pdfDoc.getPage(pageNum);
+    const vp   = page.getViewport({ scale: state.scale });
+    canvas.width  = vp.width;
+    canvas.height = vp.height;
+    const task = page.render({ canvasContext: canvas.getContext('2d'), viewport: vp });
+    state.renderTasks.set(origIndex, task);
+    await task.promise;
+    state.renderTasks.delete(origIndex);
+  } catch (e) {
+    if (e?.name !== 'RenderingCancelledException') {
+      console.warn('Render error page', pageNum, e);
+    }
+  }
+}
+
+async function rerenderAllPages() {
+  // Cancel all in-flight tasks first
+  for (const [origIndex, task] of state.renderTasks) {
+    try { task.cancel(); } catch (_) {}
+  }
+  state.renderTasks.clear();
+
+  // Re-render one at a time to avoid same-canvas concurrent render errors
+  for (const [origIndex, canvas] of state.renderQueue) {
+    await renderPageOnCanvas(origIndex + 1, canvas);
+  }
+}
+
+/* ================================================================
+   Scroll observer — highlight current page & update jump input
+================================================================ */
+function setupScrollObserver() {
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const pg = parseInt(entry.target.dataset.pageNum, 10);
+        if (pg) {
+          state.currentVisiblePage = pg;
+          pageJump.value = pg;
+          document.querySelectorAll('.pdf-page-wrapper').forEach(w => w.classList.remove('active-page'));
+          entry.target.classList.add('active-page');
+        }
+      }
+    });
+  }, { root: pdfScrollWrap, threshold: 0.3 });
+
+  document.querySelectorAll('.pdf-page-wrapper').forEach(w => observer.observe(w));
+}
+
+/* ================================================================
+   Navigate to page (scroll into view)
+================================================================ */
+function scrollToPage(pageNum) {
+  const wrapper = pdfPagesContainer.querySelector(`[data-page-num="${pageNum}"]`);
+  if (wrapper) wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+$('btn-go-page').addEventListener('click', () => {
+  const v = parseInt(pageJump.value, 10);
+  if (!isNaN(v) && v >= 1 && v <= state.totalPages) scrollToPage(v);
+});
+pageJump.addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-go-page').click(); });
+
+/* ================================================================
+   Zoom — applies to PDF pages AND the TOC preview page
+================================================================ */
+function applyTocZoom() {
+  const tocInner = $('toc-page-inner');
+  const tocWrap  = $('toc-virtual-page');
+  if (!tocInner || !tocWrap) return;
+  const s = state.scale;
+  tocInner.style.transformOrigin = 'top center';
+  tocInner.style.transform = `scale(${s})`;
+  // Compute natural dimensions (reset transform first to measure accurately)
+  tocInner.style.transform = 'none';
+  const naturalW = tocInner.offsetWidth  || 595;
+  const naturalH = tocInner.offsetHeight || 842;
+  tocInner.style.transform = `scale(${s})`;
+  // Set wrapper dimensions so the scroll container accounts for the scaled size
+  tocWrap.style.width  = (naturalW * s) + 'px';
+  tocWrap.style.height = (naturalH * s + 24) + 'px';
+}
+
+btnZoomIn.addEventListener('click',  async () => {
+  state.scale = Math.min(state.scale + 0.25, 4);
+  zoomLevel.textContent = Math.round(state.scale * 100) + '%';
+  applyTocZoom();
+  await rerenderAllPages();
+});
+btnZoomOut.addEventListener('click', async () => {
+  state.scale = Math.max(state.scale - 0.25, 0.5);
+  zoomLevel.textContent = Math.round(state.scale * 100) + '%';
+  applyTocZoom();
+  await rerenderAllPages();
+});
+
+/* ================================================================
+   TOC virtual page toggle in viewer
+================================================================ */
+btnTocPage.addEventListener('click', () => {
+  state.showToc = !state.showToc;
+  // Sync with pageOrder toc entry visibility
+  const tocEntry = state.pageOrder.find(p => p.type === 'toc');
+  if (tocEntry) tocEntry.removed = !state.showToc;
+  tocVirtualPage.style.display = state.showToc ? '' : 'none';
+  btnTocPage.style.background = state.showToc ? 'var(--accent)' : 'var(--bg3)';
+  btnTocPage.style.color = state.showToc ? '#fff' : 'var(--text2)';
+  btnTocPage.style.borderColor = state.showToc ? 'var(--accent)' : 'var(--border2)';
+
+  if (state.showToc) {
+    tocVirtualPage.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    pageRangeBadge.textContent = 'TOC + PDF';
+    pageRangeBadge.style.color = '#4e8ef7';
+  } else {
+    pageRangeBadge.textContent = '';
+  }
+  renderPagesPanel();
+});
+// Start with TOC shown and styled
+btnTocPage.style.background = 'var(--accent)';
+btnTocPage.style.color = '#fff';
+btnTocPage.style.borderColor = 'var(--accent)';
+pageRangeBadge.textContent = 'TOC + PDF';
+pageRangeBadge.style.color = '#4e8ef7';
+
+/* ================================================================
+   Live TOC page view (the white A4 preview)
+================================================================ */
+function updateTocPageView() {
+  // Apply font family to the preview page
+  const fo = getActiveFontOption();
+  $('toc-page-inner').style.fontFamily = fo.previewFont;
+  $('toc-view-title').style.fontSize   = state.tocStyle.sz.title + 'px';
+
+  if (state.startPage !== 1 || state.endPage !== state.totalPages) {
+    tocViewSubtitle.textContent = `Pages ${rawToDisplay(state.startPage)}–${rawToDisplay(state.endPage)}`;
+    tocViewSubtitle.style.display = 'block';
+  } else {
+    tocViewSubtitle.style.display = 'none';
+  }
+
+  tocViewEntries.innerHTML = '';
+  const indentPx = { 1: 0, 2: 14, 3: 28, 4: 42 };
+
+  // Apply page-order sync for the live preview
+  const previewHeadings = applyPageOrderSync(state.filteredHeadings);
+
+  previewHeadings.forEach(h => {
+    const lv = Math.min(h.level, 4);
+    const lvKey = ['h1','h2','h3','h4'][lv - 1];
+    const fs = state.tocStyle.sz[lvKey];
+    const a  = document.createElement('a');
+    a.className = `toc-view-entry tve-lv${lv}`;
+    a.href = '#';
+    a.title = `Scroll to page ${h.page}`;
+    a.addEventListener('click', e => { e.preventDefault(); scrollToPage(h.page); });
+
+    const indent = document.createElement('span');
+    indent.className = 'tve-indent';
+    indent.style.cssText = `width:${indentPx[lv]}px; flex-shrink:0; display:inline-block;`;
+    const titleEl = document.createElement('span');
+    titleEl.className = 'tve-title';
+    titleEl.style.fontSize = fs + 'px';
+    if (lv === 1) titleEl.style.fontWeight = '700';
+    titleEl.textContent = h.title;
+    const dotsEl = document.createElement('span');
+    dotsEl.className = 'tve-dots';
+    const pageEl = document.createElement('span');
+    pageEl.className = 'tve-page';
+    pageEl.style.fontSize = Math.max(fs - 1, 7) + 'px';
+    pageEl.textContent = rawToDisplay(h.page);
+
+    a.append(indent, titleEl, dotsEl, pageEl);
+    tocViewEntries.appendChild(a);
+  });
+
+  if (!previewHeadings.length) {
+    const p = document.createElement('p');
+    p.style.cssText = 'color:#adb5bd; font-style:italic; font-size:10px; margin-top:10px;';
+    p.textContent = 'No entries in this page range.';
+    tocViewEntries.appendChild(p);
+  }
+
+  tocViewFooter.textContent = `Generated by PDF TOC Generator · ${new Date().toLocaleDateString()}`;
+  // Re-apply zoom scale so TOC page stays in sync with PDF pages
+  applyTocZoom();
+}
+
+/* ================================================================
+   TOC filtering
+================================================================ */
+function filterAndRenderTOC() {
+  state.startPage        = Math.max(1, Math.min(parseInt(startPageIn.value, 10) || 1, state.totalPages));
+  state.endPage          = Math.max(state.startPage, Math.min(parseInt(endPageIn.value, 10) || state.totalPages, state.totalPages));
+  state.filteredHeadings = state.headings.filter(h => h.page >= state.startPage && h.page <= state.endPage);
+  renderTOC(state.filteredHeadings);
+  updateTocPageView();
+}
+
+startPageIn.addEventListener('input', debounce(filterAndRenderTOC, 300));
+endPageIn.addEventListener('input',   debounce(filterAndRenderTOC, 300));
+btnResetRange.addEventListener('click', () => {
+  startPageIn.value = 1; endPageIn.value = state.totalPages; filterAndRenderTOC();
+});
+
+/* ================================================================
+   Editable TOC sidebar
+================================================================ */
+function renderTOC(headings) {
+  tocList.querySelectorAll('.toc-entry').forEach(e => e.remove());
+
+  // Apply page-order sync
+  const displayed = applyPageOrderSync(headings);
+
+  tocEmpty.style.display = displayed.length === 0 ? 'block' : 'none';
+  tocCount.textContent   = `${displayed.length} ${displayed.length === 1 ? 'entry' : 'entries'}`;
+
+  displayed.forEach(h => tocList.appendChild(buildRow(h)));
+}
+
+function onEntryEdited() {
+  state.filteredHeadings = state.headings.filter(h => h.page >= state.startPage && h.page <= state.endPage);
+  updateTocPageView();
+}
+
+function buildRow(h) {
+  const div = document.createElement('div');
+  div.className = `toc-entry level-${Math.min(h.level, 4)}`;
+  div.draggable = true;
+
+  const drag = document.createElement('span');
+  drag.className = 'entry-drag'; drag.textContent = '⠿'; drag.title = 'Drag to reorder';
+
+  const lvSel = document.createElement('select');
+  lvSel.className = 'entry-level-select';
+  [1,2,3,4].forEach(l => {
+    const o = document.createElement('option');
+    o.value = l; o.textContent = `H${l}`; if (l === h.level) o.selected = true;
+    lvSel.appendChild(o);
+  });
+  lvSel.addEventListener('change', () => {
+    h.level = parseInt(lvSel.value, 10);
+    div.replaceWith(buildRow(h));
+    onEntryEdited();
+  });
+
+  const titleLink = document.createElement('span');
+  titleLink.className = 'entry-title-link';
+  titleLink.title = `Click to scroll to page ${h.page}`;
+
+  const titleIn = document.createElement('input');
+  titleIn.type = 'text'; titleIn.className = 'entry-title-input';
+  titleIn.value = h.title; titleIn.placeholder = 'Entry title…';
+
+  titleLink.addEventListener('click', e => { if (document.activeElement !== titleIn) { e.preventDefault(); scrollToPage(h.page); } });
+  titleIn.addEventListener('input',   () => { h.title = titleIn.value; debounce(onEntryEdited, 400)(); });
+  titleIn.addEventListener('focus',   () => { titleLink.title = 'Editing…'; });
+  titleIn.addEventListener('blur',    () => { titleLink.title = `Click to scroll to page ${h.page}`; onEntryEdited(); });
+  titleLink.appendChild(titleIn);
+
+  const dots = document.createElement('span');
+  dots.className = 'entry-dots';
+
+  const pageIn = document.createElement('input');
+  pageIn.type = 'number'; pageIn.className = 'entry-page-input';
+  // Show display page (raw + offset); editing also uses display numbers
+  pageIn.value = rawToDisplay(h.page);
+  pageIn.min = rawToDisplay(1); pageIn.max = rawToDisplay(state.totalPages);
+  pageIn.title = `Display page ${rawToDisplay(h.page)}${state.pageOffset !== 0 ? ` (PDF p.${h.page})` : ''} — click to scroll, or edit`;
+  pageIn.addEventListener('click', () => { if (document.activeElement !== pageIn) scrollToPage(h.page); });
+  pageIn.addEventListener('input', () => {
+    const displayVal = parseInt(pageIn.value, 10);
+    const rawVal     = displayToRaw(displayVal);
+    if (!isNaN(rawVal) && rawVal >= 1 && rawVal <= state.totalPages) {
+      h.page = rawVal;
+      pageIn.title = `Display page ${displayVal}${state.pageOffset !== 0 ? ` (PDF p.${rawVal})` : ''} — click to scroll, or edit`;
+    }
+  });
+  pageIn.addEventListener('blur', () => { onEntryEdited(); });
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'entry-delete'; delBtn.title = 'Remove entry'; delBtn.textContent = '×';
+  delBtn.addEventListener('click', e => { e.stopPropagation(); const i = state.headings.indexOf(h); if (i !== -1) state.headings.splice(i, 1); filterAndRenderTOC(); });
+
+  div.append(drag, lvSel, titleLink, dots, pageIn, delBtn);
+
+  div.addEventListener('dragstart', e => { state.dragSrcIdx = state.headings.indexOf(h); div.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+  div.addEventListener('dragend',   () => { div.classList.remove('dragging'); tocList.querySelectorAll('.toc-entry').forEach(r => r.classList.remove('drag-over')); });
+  div.addEventListener('dragover',  e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; tocList.querySelectorAll('.toc-entry').forEach(r => r.classList.remove('drag-over')); div.classList.add('drag-over'); });
+  div.addEventListener('drop', e => {
+    e.preventDefault(); div.classList.remove('drag-over');
+    const targetIdx = state.headings.indexOf(h);
+    if (state.dragSrcIdx === null || state.dragSrcIdx === targetIdx) return;
+    const [moved] = state.headings.splice(state.dragSrcIdx, 1);
+    const ins = state.dragSrcIdx < targetIdx ? targetIdx - 1 : targetIdx;
+    state.headings.splice(ins, 0, moved);
+    state.dragSrcIdx = null;
+    filterAndRenderTOC();
+  });
+
+  return div;
+}
+
+btnAddEntry.addEventListener('click', () => {
+  state.headings.push({ title: 'New entry', page: state.currentVisiblePage || 1, level: 1 });
+  filterAndRenderTOC();
+  const rows = tocList.querySelectorAll('.toc-entry');
+  if (rows.length) { const inp = rows[rows.length-1].querySelector('.entry-title-input'); if (inp) { inp.focus(); inp.select(); } }
+});
+
+/* ================================================================
+   Page Manager Panel
+================================================================ */
+function renderPagesPanel() {
+  pagesGrid.innerHTML = '';
+  const total   = state.pageOrder.length;
+  const removed = state.pageOrder.filter(p => p.removed).length;
+  const active  = total - removed;
+  pagesCount.textContent = `${active} active · ${removed} removed`;
+  btnRestoreAll.style.display = removed > 0 ? '' : 'none';
+
+  state.pageOrder.forEach((pg, i) => {
+    const isToc     = pg.type === 'toc';
+    const isRemoved = pg.removed;
+
+    const row = document.createElement('div');
+    row.className = 'page-row' + (isRemoved ? ' removed' : '');
+    row.draggable = !isRemoved;
+    row.dataset.idx = i;
+
+    // ── Drag handle ──
+    const dragHandle = document.createElement('span');
+    dragHandle.className = 'page-row-drag';
+    dragHandle.textContent = '⠿';
+    dragHandle.title = 'Drag to reorder';
+
+    // ── Position number ──
+    const numEl = document.createElement('span');
+    numEl.className = 'page-row-num';
+    numEl.textContent = i + 1;
+
+    // ── Thumbnail ──
+    const thumb = document.createElement('div');
+    thumb.className = 'page-row-thumb';
+
+    if (isToc) {
+      // TOC thumbnail — small white card with "TOC" text
+      thumb.style.cssText = 'background:#fff; border:1px solid #cdd; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:2px;';
+      thumb.innerHTML = '<div style="font-size:7px; font-weight:700; color:#0d6efd; letter-spacing:.05em;">TOC</div><div style="width:24px; height:1px; background:#0d6efd; margin:1px 0;"></div><div style="width:20px; height:1px; background:#ccc; margin:1px 0;"></div><div style="width:22px; height:1px; background:#ccc; margin:1px 0;"></div><div style="width:18px; height:1px; background:#ccc; margin:1px 0;"></div>';
+    } else {
+      const thumbCanvas = document.createElement('canvas');
+      thumb.appendChild(thumbCanvas);
+      renderThumb(pg.origIndex + 1, thumbCanvas);
+    }
+
+    // ── Title ──
+    const titleEl = document.createElement('div');
+    titleEl.className = 'page-row-title';
+    if (isToc) {
+      titleEl.innerHTML = `<span style="color:#0d6efd; font-weight:600;">Table of Contents</span><small>Position ${i + 1}${isRemoved ? ' · <em>removed</em>' : ' · TOC preview page'}</small>`;
+    } else {
+      titleEl.innerHTML = `<span>Page ${pg.origIndex + 1}</span><small>Position ${i + 1}${isRemoved ? ' · <em>removed</em>' : ''}</small>`;
+    }
+
+    // ── Actions ──
+    const actions = document.createElement('div');
+    actions.className = 'page-row-actions';
+
+    if (!isRemoved) {
+      const btnUp = document.createElement('button');
+      btnUp.className = 'page-btn'; btnUp.textContent = '↑'; btnUp.title = 'Move up';
+      btnUp.disabled = i === 0;
+      btnUp.addEventListener('click', () => movePage(i, i - 1));
+
+      const btnDown = document.createElement('button');
+      btnDown.className = 'page-btn'; btnDown.textContent = '↓'; btnDown.title = 'Move down';
+      btnDown.disabled = i === state.pageOrder.length - 1;
+      btnDown.addEventListener('click', () => movePage(i, i + 1));
+
+      const btnDel = document.createElement('button');
+      btnDel.className = 'page-btn danger'; btnDel.textContent = '×';
+      btnDel.title = isToc ? 'Remove TOC page from export' : 'Remove page from export';
+      btnDel.addEventListener('click', () => {
+        pg.removed = true;
+        if (isToc) {
+          state.showToc = false;
+          btnTocPage.classList.remove('btn-primary');
+          btnTocPage.classList.add('btn-secondary');
+          pageRangeBadge.textContent = '';
+        }
+        renderAllPages();
+        renderPagesPanel();
+        filterAndRenderTOC();
+      });
+
+      actions.append(btnUp, btnDown, btnDel);
+    } else {
+      const btnRestore = document.createElement('button');
+      btnRestore.className = 'page-btn restore'; btnRestore.textContent = 'Restore';
+      btnRestore.title = 'Restore this page';
+      btnRestore.addEventListener('click', () => {
+        pg.removed = false;
+        if (isToc) {
+          state.showToc = true;
+          btnTocPage.style.background='var(--accent)';btnTocPage.style.color='#fff';btnTocPage.style.borderColor='var(--accent)';
+          pageRangeBadge.textContent = 'TOC + PDF';
+          pageRangeBadge.style.color = '#4e8ef7';
+        }
+        renderAllPages();
+        renderPagesPanel();
+        filterAndRenderTOC();
+      });
+      actions.append(btnRestore);
+    }
+
+    row.append(dragHandle, numEl, thumb, titleEl, actions);
+
+    // ── Drag & drop ──
+    row.addEventListener('dragstart', e => {
+      if (isRemoved) { e.preventDefault(); return; }
+      state.pageDragSrcIdx = i;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      pagesGrid.querySelectorAll('.page-row').forEach(r => r.classList.remove('drag-over'));
+    });
+    row.addEventListener('dragover', e => {
+      if (isRemoved) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      pagesGrid.querySelectorAll('.page-row').forEach(r => r.classList.remove('drag-over'));
+      row.classList.add('drag-over');
+    });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      row.classList.remove('drag-over');
+      const src = state.pageDragSrcIdx;
+      if (src === null || src === i) return;
+      movePage(src, i);
+    });
+
+    pagesGrid.appendChild(row);
+  });
+}
+
+async function movePage(fromIdx, toIdx) {
+  if (toIdx < 0 || toIdx >= state.pageOrder.length) return;
+  const [moved] = state.pageOrder.splice(fromIdx, 1);
+  state.pageOrder.splice(toIdx, 0, moved);
+  state.pageDragSrcIdx = null;
+  await renderAllPages();
+  renderPagesPanel();
+  filterAndRenderTOC();   // ← re-sorts TOC to match new page sequence
+  setupScrollObserver();
+}
+
+btnRestoreAll.addEventListener('click', async () => {
+  state.pageOrder.forEach(p => {
+    p.removed = false;
+    if (p.type === 'toc') {
+      state.showToc = true;
+      btnTocPage.classList.add('btn-primary');
+      btnTocPage.classList.remove('btn-secondary');
+      pageRangeBadge.textContent = 'TOC + PDF';
+      pageRangeBadge.style.color = '#4e8ef7';
+    }
+  });
+  await renderAllPages();
+  renderPagesPanel();
+  filterAndRenderTOC();
+  setupScrollObserver();
+});
+
+async function renderThumb(pageNum, canvas) {
+  try {
+    const page = await state.pdfDoc.getPage(pageNum);
+    const vp   = page.getViewport({ scale: 0.12 });
+    canvas.width  = vp.width;
+    canvas.height = vp.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+  } catch(e) {}
+}
+
+/* ================================================================
+   Download — TXT
+================================================================ */
+btnDlTxt.addEventListener('click', () => {
+  const exportHeadings = applyPageOrderSync(state.filteredHeadings);
+  if (!exportHeadings.length) { alert('No TOC entries to export.'); return; }
+  const lines = ['TABLE OF CONTENTS', `Pages ${rawToDisplay(state.startPage)}–${rawToDisplay(state.endPage)}`, ''];
+  exportHeadings.forEach(h => {
+    const indent  = '  '.repeat(h.level - 1);
+    const dispPg  = String(rawToDisplay(h.page));
+    const dlen    = Math.max(0, 64 - indent.length - h.title.length - dispPg.length);
+    lines.push(`${indent}${h.title} ${'.'.repeat(dlen)} ${dispPg}`);
+  });
+  lines.push('', `Generated by PDF TOC Generator · ${new Date().toLocaleDateString()}`);
+  downloadBlob(new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' }), 'table-of-contents.txt');
+});
+
+/* ================================================================
+   Download — PDF Export (always uses page order / full export)
+================================================================ */
+btnDlPdfPages.addEventListener('click', () => buildPdfWithToc(true));
+
+/* ================================================================
+   PDF Document Outline (bookmarks panel)
+   Writes a proper /Outlines tree into the document catalog so
+   PDF viewers show a navigable bookmark panel.
+
+   headings        — array of { title, page (raw 1-based), level }
+   origPageToFinalIdx — Map: raw origPage (1-based) → 0-based final page index
+================================================================ */
+function buildOutline(doc, headings, origPageToFinalIdx) {
+  if (!headings.length) return;
+  try {
+
+  const { PDFName, PDFArray, PDFDict, PDFNull, PDFNumber, PDFString, PDFHexString } = PDFLib;
+  const ctx = doc.context;
+
+  // Helper: encode title as UTF-16BE hex string (handles non-ASCII)
+  function encodeTitle(str) {
+    // Build UTF-16BE bytes with BOM FE FF
+    const bytes = [0xFE, 0xFF];
+    for (let i = 0; i < str.length; i++) {
+      const cp = str.charCodeAt(i);
+      bytes.push((cp >> 8) & 0xFF, cp & 0xFF);
+    }
+    const hex = bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+    return PDFHexString.of(hex);
+  }
+
+  // Build a destination array pointing to a page at top
+  function makeXYZDest(pageRef) {
+    const arr = PDFArray.withContext(ctx);
+    arr.push(pageRef);
+    arr.push(PDFName.of('XYZ'));
+    arr.push(PDFNull); arr.push(PDFNull); arr.push(PDFNull);
+    return arr;
+  }
+
+  // We'll build outline items in a flat list first, then wire up the tree
+  // Each item: { dict, ref, level, title, page }
+  const items = headings.map(h => {
+    const finalIdx = origPageToFinalIdx.get(h.page);
+    if (finalIdx === undefined) return null;
+    const pageRef = doc.getPage(finalIdx).ref;
+    const dict = PDFDict.withContext(ctx);
+    dict.set(PDFName.of('Title'), encodeTitle(h.title));
+    dict.set(PDFName.of('Dest'),  makeXYZDest(pageRef));
+    const ref = ctx.register(dict);
+    return { dict, ref, level: Math.min(h.level, 4) };
+  }).filter(Boolean);
+
+  if (!items.length) return;
+
+  // Root outline dict
+  const outlineDict = PDFDict.withContext(ctx);
+  const outlineRef  = ctx.register(outlineDict);
+
+  // prevSiblingRef at a given level
+  const prevSibling = new Map(); // level → ref of previous sibling at that level
+
+  // container stack: each entry = { level, ref, dict, firstChildRef, lastChildRef, count }
+  const containers = [{ level: 0, ref: outlineRef, dict: outlineDict, firstChildRef: null, lastChildRef: null, count: 0 }];
+
+  for (const item of items) {
+    const lv = item.level;
+
+    // Pop containers that are deeper than the current item (we've exited those subtrees)
+    while (containers.length > 1 && containers[containers.length - 1].level >= lv) {
+      const closed = containers.pop();
+      // Only write First/Last/Count if children were actually added
+      if (closed.firstChildRef) {
+        closed.dict.set(PDFName.of('Count'), PDFNumber.of(-closed.count));
+        closed.dict.set(PDFName.of('First'), closed.firstChildRef);
+        closed.dict.set(PDFName.of('Last'),  closed.lastChildRef);
+      }
+    }
+
+    const parent = containers[containers.length - 1];
+
+    // Set Parent pointer
+    item.dict.set(PDFName.of('Parent'), parent.ref);
+
+    // Wire Prev/Next siblings
+    const prev = prevSibling.get(lv);
+    if (prev) {
+      item.dict.set(PDFName.of('Prev'), prev);
+      // Reach back and set Next on the previous sibling
+      ctx.lookup(prev).set(PDFName.of('Next'), item.ref);
+    }
+    prevSibling.set(lv, item.ref);
+
+    // Clear deeper sibling tracking since we may be entering a new subtree
+    for (const k of [...prevSibling.keys()]) {
+      if (k > lv) prevSibling.delete(k);
+    }
+
+    // Update parent's first/last child pointers
+    if (!parent.firstChildRef) parent.firstChildRef = item.ref;
+    parent.lastChildRef = item.ref;
+    parent.count++;
+
+    // Push this item as a potential container for deeper levels
+    containers.push({ level: lv, ref: item.ref, dict: item.dict, firstChildRef: null, lastChildRef: null, count: 0 });
+  }
+
+  // Close any remaining open containers
+  while (containers.length > 1) {
+    const closed = containers.pop();
+    // Only write First/Last/Count if this item actually got children
+    if (closed.firstChildRef) {
+      closed.dict.set(PDFName.of('Count'), PDFNumber.of(-closed.count));
+      closed.dict.set(PDFName.of('First'), closed.firstChildRef);
+      closed.dict.set(PDFName.of('Last'),  closed.lastChildRef);
+    }
+  }
+
+  // Finalize root outline dict
+  const root = containers[0];
+  outlineDict.set(PDFName.of('Type'),  PDFName.of('Outlines'));
+  outlineDict.set(PDFName.of('Count'), PDFNumber.of(root.count));
+  if (root.firstChildRef) {
+    outlineDict.set(PDFName.of('First'), root.firstChildRef);
+    outlineDict.set(PDFName.of('Last'),  root.lastChildRef);
+  }
+
+  // Wire outline into the document catalog
+  const catalog = doc.catalog;
+  catalog.set(PDFName.of('Outlines'), outlineRef);
+  // PageMode: UseOutlines makes viewers open the bookmarks panel automatically
+  catalog.set(PDFName.of('PageMode'), PDFName.of('UseOutlines'));
+  } catch (e) {
+    console.warn('buildOutline failed (outline skipped):', e);
+  }
+}
+
+async function buildPdfWithToc(usePageOrder) {
+  if (!state.pdfArrayBuffer) { alert('No PDF loaded.'); return; }
+
+  const btn = btnDlPdfPages;
+  btn.disabled = true;
+  btn.textContent = '…building';
+  setStatus('Building PDF…');
+
+  try {
+    const { PDFDocument, rgb, StandardFonts, PageSizes,
+            PDFName, PDFArray, PDFDict, PDFNull, PDFNumber, degrees } = PDFLib;
+
+    const origDoc      = await PDFDocument.load(state.pdfArrayBuffer);
+    const origPageCount = origDoc.getPageCount();
+    // Use sync-filtered headings (respects page order/removal and offset)
+    const headings     = applyPageOrderSync(state.filteredHeadings);
+
+    // ── Determine the desired page sequence ───────────────────────
+    // Each slot: { type: 'toc' } | { type: 'pdf', origIndex: number }
+    let sequence;
+    if (usePageOrder) {
+      sequence = state.pageOrder
+        .filter(p => !p.removed)
+        .map(p => p.type === 'toc' ? { type: 'toc' } : { type: 'pdf', origIndex: p.origIndex });
+    } else {
+      sequence = [
+        { type: 'toc' },
+        ...Array.from({ length: origPageCount }, (_, i) => ({ type: 'pdf', origIndex: i }))
+      ];
+    }
+
+    const hasToc       = sequence.some(s => s.type === 'toc');
+    const pdfSlots     = sequence.filter(s => s.type === 'pdf');
+    const tocPosition  = sequence.findIndex(s => s.type === 'toc'); // index in final doc where TOC block starts
+
+    // ── Copy all needed PDF pages into a staging doc ───────────────
+    // We copy them ALL upfront so we can place them in any order.
+    const pdfOrigIndices = pdfSlots.map(s => s.origIndex);
+
+    // ── Build the final document ───────────────────────────────────
+    const outDoc = await PDFDocument.create();
+
+    // ── Resolve fonts from tocStyle ──────────────────────────────
+    const fo    = getActiveFontOption();
+    const fBold = await outDoc.embedFont(StandardFonts[fo.pdfBold]);
+    const fReg  = await outDoc.embedFont(StandardFonts[fo.pdfReg]);
+    const fMono = await outDoc.embedFont(StandardFonts.Courier);
+    const M = 60;
+    const sz = state.tocStyle.sz;
+    const cfg = {
+      1: { fs: sz.h1, lh: sz.h1 + 8, indent:  0, font: fBold, color: rgb(0.10, 0.08, 0.04) },
+      2: { fs: sz.h2, lh: sz.h2 + 6, indent: 14, font: fReg,  color: rgb(0.30, 0.26, 0.22) },
+      3: { fs: sz.h3, lh: sz.h3 + 5, indent: 28, font: fReg,  color: rgb(0.48, 0.43, 0.38) },
+      4: { fs: sz.h4, lh: sz.h4 + 5, indent: 42, font: fReg,  color: rgb(0.55, 0.50, 0.45) },
+    };
+
+    // Copy all PDF pages from origDoc into outDoc up-front
+    const copiedPdfPages = await outDoc.copyPages(origDoc, pdfOrigIndices);
+
+    // ── Render TOC content into a list of page objects ─────────────
+    // Returns array of { page, linkRegions[] }
+    function buildTocPageData() {
+      const results = [];
+
+      function newTocPage(isFirst) {
+        const pg = outDoc.addPage(PageSizes.A4);
+        const { width, height } = pg.getSize();
+        let y = height - M;
+        if (isFirst) {
+          pg.drawText('TABLE OF CONTENTS', { x: M, y, font: fBold, size: sz.title, color: rgb(0.10,0.08,0.04) });
+          y -= 8;
+          pg.drawLine({ start:{x:M,y}, end:{x:width-M,y}, thickness:1.5, color:rgb(0.78,0.28,0.10) });
+          y -= 20;
+          if (state.startPage !== 1 || state.endPage !== state.totalPages) {
+            pg.drawText(`Pages ${rawToDisplay(state.startPage)}\u2013${rawToDisplay(state.endPage)}`, { x:M, y, font:fReg, size:8, color:rgb(0.48,0.43,0.38) });
+            y -= 18;
+          }
+        } else {
+          pg.drawText('TABLE OF CONTENTS (continued)', { x:M, y:y-10, font:fReg, size:9, color:rgb(0.55,0.50,0.45) });
+          y -= 28;
+        }
+        results.push({ page: pg, linkRegions: [], y, width, height });
+        return results[results.length - 1];
+      }
+
+      let cur = newTocPage(true);
+
+      for (const h of headings) {
+        const lv = Math.min(h.level, 4);
+        const { fs, lh, indent, font, color } = cfg[lv];
+        if (cur.y - fs < M + 16) cur = newTocPage(false);
+
+        const pageStr = String(rawToDisplay(h.page));  // display number in TOC text
+        const pgW     = fMono.widthOfTextAtSize(pageStr, fs);
+        const pgX     = cur.width - M - pgW;
+        let title     = h.title;
+        const maxW    = pgX - M - indent - 18;
+        while (title.length > 2 && font.widthOfTextAtSize(title, fs) > maxW) title = title.slice(0,-1);
+        if (title !== h.title) title = title.slice(0,-1) + '\u2026';
+
+        const textY = cur.y - fs;
+        cur.page.drawText(title, { x:M+indent, y:textY, font, size:fs, color });
+
+        const tw       = font.widthOfTextAtSize(title, fs);
+        const dotStart = M + indent + tw + 5;
+        const dotEnd   = pgX - 5;
+        const dotPitch = fReg.widthOfTextAtSize('. ', fs * 0.75);
+        if (dotEnd > dotStart + dotPitch) {
+          for (let dx = dotStart; dx + dotPitch < dotEnd; dx += dotPitch)
+            cur.page.drawText('.', { x:dx, y:textY+1.5, font:fReg, size:fs*0.75, color:rgb(0.72,0.67,0.60) });
+        }
+        cur.page.drawText(pageStr, { x:pgX, y:textY, font:fMono, size:fs, color:rgb(0.45,0.40,0.35) });
+        cur.linkRegions.push({ x:M, y:textY-2, w:cur.width-M*2, h:fs+4, origPage: h.page });
+        cur.y -= lh;
+      }
+
+      // Footer + optional watermark
+      results.forEach((item, idx) => {
+        const label = results.length > 1
+          ? `Page ${idx+1} of ${results.length}  ·  Generated by PDF TOC Generator · ${new Date().toLocaleDateString()}`
+          : `Generated by PDF TOC Generator · ${new Date().toLocaleDateString()}`;
+        item.page.drawText(label, { x:M, y:M/2, font:fReg, size:7, color:rgb(0.65,0.60,0.55) });
+
+        if (state.watermark) {
+          item.page.drawText('GENERATED BY TOC GENERATOR', {
+            x: item.width / 2 - 160, y: item.height / 2 - 10,
+            font: fBold, size: 22,
+            color: rgb(0.80, 0.80, 0.80),
+            opacity: 0.25,
+            rotate: degrees(35),
+          });
+        }
+      });
+
+      return results;
+    }
+
+    // Build TOC pages — they are added to outDoc via addPage() inside buildTocPageData
+    // but we want to control position. Strategy: build them, then use outDoc.removePage
+    // to pull them out, then re-insert in the right slots.
+    // Simpler: track page count before and after building TOC, then reorder.
+
+    // Since pdf-lib doesn't support insertPage by index directly in all versions,
+    // we use the following approach:
+    //  1. Collect all pages in final order as either tocPageData items or copiedPdfPages
+    //  2. Add them to outDoc in the correct sequence
+
+    // First, build TOC data (this adds pages at the END of outDoc temporarily)
+    const tocPageCountBefore = outDoc.getPageCount(); // should be 0
+    let tocData = [];
+    if (hasToc && headings.length > 0) {
+      tocData = buildTocPageData();
+    }
+    const tocPageCount = tocData.length;
+    // outDoc now has tocPageCount pages (the TOC pages, in order, starting at index 0)
+
+    // Now add PDF pages in the order defined by pdfSlots
+    copiedPdfPages.forEach(p => outDoc.addPage(p));
+    // outDoc now has: [toc0, toc1, ..., pdfSlot0, pdfSlot1, ...]
+
+    // ── Reorder into the desired sequence ──────────────────────────
+    // Build a mapping: for each slot in sequence[], what is its current page index in outDoc?
+    let tocSlotsFilled = 0;
+    let pdfSlotsFilled = 0;
+    const desiredOrder = []; // array of current outDoc page indices
+
+    for (const slot of sequence) {
+      if (slot.type === 'toc') {
+        // TOC occupies tocPageCount pages
+        for (let t = 0; t < tocPageCount; t++) desiredOrder.push(t);
+        tocSlotsFilled++;
+      } else {
+        desiredOrder.push(tocPageCount + pdfSlotsFilled);
+        pdfSlotsFilled++;
+      }
+    }
+
+    // Use pdf-lib's page reordering: get all pages, remove all, re-add in order
+    if (desiredOrder.length > 0 && tocPageCount > 0) {
+      // Only reorder if TOC isn't already at position 0 (the common case)
+      const firstTocInDesired = desiredOrder[0];
+      if (firstTocInDesired !== 0 || desiredOrder.some((v, i) => v !== i)) {
+        // pdf-lib supports getPage and removePage; rebuild by copying into fresh doc
+        const reorderedDoc = await PDFDocument.create();
+        const allPageIndices = desiredOrder;
+        const reorderedPages = await reorderedDoc.copyPages(outDoc, allPageIndices);
+        reorderedPages.forEach(p => reorderedDoc.addPage(p));
+
+        // Re-embed fonts for annotation writing
+        const pdfCtx2 = reorderedDoc.context;
+
+        // Build a lookup: origPage (1-based) → final page index in reorderedDoc
+        const origPageToFinalIdx = new Map();
+        let rIdx = 0;
+        for (const slot of sequence) {
+          if (slot.type === 'toc') {
+            rIdx += tocPageCount;
+          } else {
+            origPageToFinalIdx.set(slot.origIndex + 1, rIdx);
+            rIdx++;
+          }
+        }
+
+        // Add link annotations on TOC pages in reorderedDoc
+        let tocStartInFinal = sequence.findIndex(s => s.type === 'toc');
+        tocData.forEach((item, tocIdx) => {
+          if (!item.linkRegions.length) return;
+          const finalTocIdx = tocStartInFinal + tocIdx;
+          const finalTocPage = reorderedDoc.getPage(finalTocIdx);
+          const annotRefs = [];
+
+          for (const region of item.linkRegions) {
+            const destFinalIdx = origPageToFinalIdx.get(region.origPage);
+            if (destFinalIdx === undefined) continue;
+            const destPage = reorderedDoc.getPage(destFinalIdx);
+
+            const destArray = PDFArray.withContext(pdfCtx2);
+            destArray.push(destPage.ref);
+            destArray.push(PDFName.of('XYZ'));
+            destArray.push(PDFNull); destArray.push(PDFNull); destArray.push(PDFNull);
+
+            const annotDict = PDFDict.withContext(pdfCtx2);
+            annotDict.set(PDFName.of('Type'),    PDFName.of('Annot'));
+            annotDict.set(PDFName.of('Subtype'), PDFName.of('Link'));
+            const rect = PDFArray.withContext(pdfCtx2);
+            rect.push(PDFNumber.of(region.x)); rect.push(PDFNumber.of(region.y));
+            rect.push(PDFNumber.of(region.x + region.w)); rect.push(PDFNumber.of(region.y + region.h));
+            annotDict.set(PDFName.of('Rect'), rect);
+            const border = PDFArray.withContext(pdfCtx2);
+            [0,0,0].forEach(n => border.push(PDFNumber.of(n)));
+            annotDict.set(PDFName.of('Border'), border);
+            annotDict.set(PDFName.of('Dest'), destArray);
+            annotRefs.push(pdfCtx2.register(annotDict));
+          }
+
+          if (annotRefs.length) {
+            const annotsArr = PDFArray.withContext(pdfCtx2);
+            annotRefs.forEach(r => annotsArr.push(r));
+            pdfCtx2.lookup(finalTocPage.ref).set(PDFName.of('Annots'), annotsArr);
+          }
+        });
+
+        // ── Build document outline (bookmarks panel) ──────────────
+        buildOutline(reorderedDoc, headings, origPageToFinalIdx);
+
+        const pdfBytes = await reorderedDoc.save();
+        downloadBlob(new Blob([pdfBytes], { type:'application/pdf' }), 'document-with-toc.pdf');
+        setStatus(`Done — ${reorderedDoc.getPageCount()} pages exported${state.watermark ? ' (watermarked)' : ''}`);
+        return;
+      }
+    }
+
+    // ── Fast path: TOC is already at position 0 (default case) ────
+    // Add link annotations directly on outDoc
+    if (tocPageCount > 0) {
+      const pdfCtx = outDoc.context;
+
+      // Build origPage → final page index map for default order
+      const origPageToFinalIdx = new Map();
+      let pIdx = 0;
+      for (const slot of sequence) {
+        if (slot.type === 'pdf') {
+          origPageToFinalIdx.set(slot.origIndex + 1, tocPageCount + pIdx);
+          pIdx++;
+        }
+      }
+
+      tocData.forEach((item, tocIdx) => {
+        if (!item.linkRegions.length) return;
+        const annotRefs = [];
+
+        for (const region of item.linkRegions) {
+          const destFinalIdx = origPageToFinalIdx.get(region.origPage);
+          if (destFinalIdx === undefined) continue;
+          const destPage = outDoc.getPage(destFinalIdx);
+
+          const destArray = PDFArray.withContext(pdfCtx);
+          destArray.push(destPage.ref);
+          destArray.push(PDFName.of('XYZ'));
+          destArray.push(PDFNull); destArray.push(PDFNull); destArray.push(PDFNull);
+
+          const annotDict = PDFDict.withContext(pdfCtx);
+          annotDict.set(PDFName.of('Type'),    PDFName.of('Annot'));
+          annotDict.set(PDFName.of('Subtype'), PDFName.of('Link'));
+          const rect = PDFArray.withContext(pdfCtx);
+          rect.push(PDFNumber.of(region.x)); rect.push(PDFNumber.of(region.y));
+          rect.push(PDFNumber.of(region.x + region.w)); rect.push(PDFNumber.of(region.y + region.h));
+          annotDict.set(PDFName.of('Rect'), rect);
+          const border = PDFArray.withContext(pdfCtx);
+          [0,0,0].forEach(n => border.push(PDFNumber.of(n)));
+          annotDict.set(PDFName.of('Border'), border);
+          annotDict.set(PDFName.of('Dest'), destArray);
+          annotRefs.push(pdfCtx.register(annotDict));
+        }
+
+        if (annotRefs.length) {
+          const annotsArr = PDFArray.withContext(pdfCtx);
+          annotRefs.forEach(r => annotsArr.push(r));
+          pdfCtx.lookup(item.page.ref).set(PDFName.of('Annots'), annotsArr);
+        }
+      });
+    }
+
+    // ── Build document outline (bookmarks panel) ──────────────────
+    if (headings.length > 0) {
+      const origPageToFinalIdxFast = new Map();
+      let pIdx2 = 0;
+      for (const slot of sequence) {
+        if (slot.type === 'pdf') {
+          origPageToFinalIdxFast.set(slot.origIndex + 1, tocPageCount + pIdx2);
+          pIdx2++;
+        }
+      }
+      buildOutline(outDoc, headings, origPageToFinalIdxFast);
+    }
+
+    const pdfBytes = await outDoc.save();
+    downloadBlob(new Blob([pdfBytes], { type:'application/pdf' }), 'document-with-toc.pdf');
+    setStatus(`Done — ${outDoc.getPageCount()} pages exported${state.watermark ? ' (watermarked)' : ''}`);
+
+  } catch (err) {
+    setStatus('Error: ' + err.message);
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↓ Export PDF';
+  }
+}
+
+/* ================================================================
+   Utilities
+================================================================ */
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+window.addEventListener('beforeunload', () => {
+  sessionStorage.removeItem('toc_pdf_b64');
+  sessionStorage.removeItem('toc_api_data');
+  sessionStorage.removeItem('toc_filename');
+});
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+document.addEventListener('keydown', e => {
+  if (!state.pdfDoc) return;
+  if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
+  if (e.key === '+' || e.key === '=') btnZoomIn.click();
+  if (e.key === '-')                  btnZoomOut.click();
+  if (e.key === 't' || e.key === 'T') btnTocPage.click();
+  if (e.key === 'ArrowDown') {
+    const cur = state.currentVisiblePage;
+    if (cur < state.totalPages) scrollToPage(cur + 1);
+  }
+  if (e.key === 'ArrowUp') {
+    const cur = state.currentVisiblePage;
+    if (cur > 1) scrollToPage(cur - 1);
+    else if (state.showToc) tocVirtualPage.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+});
+</script>
+</body>
+</html>

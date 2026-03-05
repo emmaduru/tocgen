@@ -1,0 +1,15 @@
+{% extends "account/base.html" %}
+{% block title %}Login cancelled — TOC Generator{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card" style="text-align:center;">
+    <div style="font-size:3rem;margin-bottom:16px;">↩️</div>
+    <h1>Login cancelled</h1>
+    <p class="auth-sub">You cancelled the sign-in process. No worries — you can try again whenever you're ready.</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+      <a href="/accounts/login/" class="btn btn-primary" style="justify-content:center;">Sign in</a>
+      <a href="/" style="font-size:.85rem;color:var(--text2);text-decoration:none;padding:8px;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text2)'">← Back to home</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

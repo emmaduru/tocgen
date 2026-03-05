@@ -1,0 +1,15 @@
+{% extends "account/base.html" %}
+{% block title %}Authentication error — TOC Generator{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card" style="text-align:center;">
+    <div style="font-size:3rem;margin-bottom:16px;">⚠️</div>
+    <h1 style="color:var(--red);">Authentication failed</h1>
+    <p class="auth-sub">Something went wrong while signing in with your social account. This can happen if you denied access or if there was a temporary issue.</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+      <a href="/accounts/login/" class="btn btn-primary" style="justify-content:center;">Try signing in again</a>
+      <a href="/" style="font-size:.85rem;color:var(--text2);text-decoration:none;padding:8px;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text2)'">← Back to home</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

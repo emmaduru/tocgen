@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — TOC Generator{% endblock %}
+
+{% block extra_css %}
+  .dash-wrap { max-width: 1000px; margin: 0 auto; padding: 36px 24px 60px; }
+  .dash-header { margin-bottom: 32px; }
+  .dash-header h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 4px; }
+
+  /* ── Plan card ── */
+  .plan-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 24px 28px;
+    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .plan-card.plan-pro    { border-color: rgba(79,142,247,.4);  background: rgba(79,142,247,.04); }
+  .plan-card.plan-premium{ border-color: rgba(167,139,250,.4); background: rgba(167,139,250,.04); }
+  .plan-icon { font-size: 2rem; width: 52px; height: 52px; display: flex; align-items:center; justify-content:center; border-radius: var(--radius); background: var(--bg3); flex-shrink:0; }
+  .plan-info { flex: 1; min-width: 0; }
+  .plan-info h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 2px; }
+  .plan-info p  { font-size: .85rem; color: var(--text2); }
+  .plan-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ── Usage bar ── */
+  .usage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .usage-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .usage-label { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin-bottom: 8px; }
+  .usage-val { font-size: 1.6rem; font-weight: 700; margin-bottom: 6px; }
+  .usage-bar-wrap { background: var(--bg3); border-radius: 4px; height: 5px; overflow: hidden; }
+  .usage-bar-fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width .4s; }
+  .usage-bar-fill.warn { background: var(--amber); }
+  .usage-bar-fill.full { background: var(--red); }
+  .usage-sub { font-size: .75rem; color: var(--text3); margin-top: 4px; }
+
+  /* ── Upload area ── */
+  .upload-section { margin-bottom: 24px; }
+  .upload-section h2 { font-size: 1rem; font-weight: 600; margin-bottom: 14px; }
+  .upload-zone {
+    border: 2px dashed var(--border2); border-radius: var(--radius-lg);
+    padding: 40px 20px; text-align: center; cursor: pointer;
+    transition: border-color .2s, background .2s; background: var(--bg2);
+  }
+  .upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); background: rgba(79,142,247,.04); }
+  .upload-zone input[type=file] { display: none; }
+  .upload-zone-icon { font-size: 2rem; margin-bottom: 10px; }
+  .upload-zone h3 { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+  .upload-zone p  { color: var(--text2); font-size: .85rem; }
+  #upload-progress { display: none; margin-top: 12px; }
+  .progress-bar-wrap { background: var(--bg3); border-radius: 6px; height: 6px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; background: var(--accent); border-radius: 6px; transition: width .3s; }
+  #upload-error { display: none; }
+
+  /* ── Recent uploads ── */
+  .recent-section h2 { font-size: 1rem; font-weight: 600; margin-bottom: 14px; }
+  .upload-table { width: 100%; border-collapse: collapse; }
+  .upload-table th { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing:.05em; color: var(--text3); text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .upload-table td { padding: 10px 12px; font-size: .875rem; border-bottom: 1px solid var(--border); color: var(--text2); }
+  .upload-table tr:last-child td { border-bottom: none; }
+  .upload-table .fname { color: var(--text); font-weight: 500; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Checkout success banner ── */
+  .checkout-banner {
+    background: rgba(45,217,142,.1); border: 1px solid rgba(45,217,142,.3);
+    border-radius: var(--radius); padding: 14px 18px;
+    color: var(--green); font-size: .9rem; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 10px;
+  }
+{% endblock %}
+
+{% block content %}
+<div class="dash-wrap">
+
+  {% if request.GET.checkout == 'success' %}
+  <div class="checkout-banner">
+    🎉 <strong>Subscription activated!</strong> &nbsp; You're now on the {{ plan|title }} plan. Enjoy your upgraded limits.
+  </div>
+  {% elif request.GET.checkout == 'cancelled' %}
+  <div class="alert alert-warning">Checkout was cancelled. You haven't been charged.</div>
+  {% endif %}
+
+  <div class="dash-header">
+    <h1>Welcome back{% if user.first_name %}, {{ user.first_name }}{% endif %} 👋</h1>
+    <p class="text-muted">{{ user.email }}</p>
+  </div>
+
+  <!-- Plan status -->
+  <div class="plan-card plan-{{ plan }}">
+    <div class="plan-icon">
+      {% if plan == 'premium' %}👑
+      {% elif plan == 'pro' %}⚡
+      {% elif plan == 'free' %}🆓
+      {% else %}👤{% endif %}
+    </div>
+    <div class="plan-info">
+      <h2>{{ plan|title }} Plan
+        <span class="badge badge-{{ plan }}" style="margin-left:8px; vertical-align:middle;">{{ plan }}</span>
+      </h2>
+      <p>
+        {% if plan == 'pro' or plan == 'premium' %}
+          Active subscription · {{ limits.max_mb }} MB files · Unlimited uploads · No watermark
+          {% if profile.subscription_end %} · Renews {{ profile.subscription_end|date:"N j, Y" }}{% endif %}
+        {% elif plan == 'free' %}
+          {{ limits.max_mb }} MB max · {{ limits.daily_uploads }} uploads/day · Watermarked exports
+        {% endif %}
+      </p>
+    </div>
+    <div class="plan-actions">
+      {% if plan in 'pro,premium' %}
+        <form method="POST" action="/stripe/portal/" style="margin:0;">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-secondary btn-sm">Manage subscription</button>
+        </form>
+      {% else %}
+        <button class="btn btn-primary btn-sm" onclick="startCheckout('pro')">Upgrade to Pro — $9/mo</button>
+        <button class="btn btn-sm" style="background:rgba(167,139,250,.15);color:var(--purple);border:1px solid rgba(167,139,250,.3);" onclick="startCheckout('premium')">Premium — $24/mo</button>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Usage stats -->
+  <div class="usage-grid">
+    <div class="usage-card">
+      <div class="usage-label">Uploads today</div>
+      {% if limits.daily_uploads %}
+        {% widthratio uploads_today limits.daily_uploads 100 as pct %}
+        <div class="usage-val">{{ uploads_today }} / {{ limits.daily_uploads }}</div>
+        <div class="usage-bar-wrap">
+          <div class="usage-bar-fill {% if pct >= 100 %}full{% elif pct >= 80 %}warn{% endif %}" style="width:{{ pct }}%"></div>
+        </div>
+        <div class="usage-sub">{{ limits.daily_uploads|add:"-1"|add:"1" }} remaining</div>
+      {% else %}
+        <div class="usage-val">{{ uploads_today }}</div>
+        <div class="usage-sub">Unlimited</div>
+      {% endif %}
+    </div>
+    <div class="usage-card">
+      <div class="usage-label">Max file size</div>
+      <div class="usage-val">
+        {% if limits.max_mb >= 1024 %}{{ limits.max_mb|floatformat:0 }} MB{% else %}{{ limits.max_mb }} MB{% endif %}
+      </div>
+      <div class="usage-sub">{{ plan|title }} plan limit</div>
+    </div>
+    <div class="usage-card">
+      <div class="usage-label">Watermark</div>
+      <div class="usage-val" style="font-size:1.2rem;">
+        {% if limits.watermark %}
+          <span style="color:var(--amber);">Yes</span>
+        {% else %}
+          <span style="color:var(--green);">None ✓</span>
+        {% endif %}
+      </div>
+      <div class="usage-sub">{% if limits.watermark %}Upgrade to remove{% else %}Clean exports{% endif %}</div>
+    </div>
+  </div>
+
+  <!-- Upload -->
+  <div class="upload-section">
+    <h2>Upload a PDF</h2>
+    <div class="upload-zone" id="dash-drop-zone">
+      <div class="upload-zone-icon">📄</div>
+      <h3>Drop your PDF here</h3>
+      <p>Or click to browse &nbsp;·&nbsp; Max {{ limits.max_mb }} MB</p>
+      <input type="file" id="dash-file-input" accept=".pdf">
+    </div>
+    <div id="upload-progress">
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progress-fill" style="width:0%"></div></div>
+      <p class="text-muted text-small mt-1" id="progress-label">Uploading…</p>
+    </div>
+    <div class="alert alert-error mt-2" id="upload-error"></div>
+  </div>
+
+  <!-- Recent uploads -->
+  {% if recent_uploads %}
+  <div class="recent-section">
+    <h2>Recent uploads</h2>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <table class="upload-table">
+        <thead>
+          <tr>
+            <th>Filename</th>
+            <th>Size</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for upload in recent_uploads %}
+          <tr>
+            <td class="fname">{{ upload.filename }}</td>
+            <td>{{ upload.file_size|filesizeformat }}</td>
+            <td>{{ upload.created_at|date:"N j, Y · g:i a" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  function startCheckout(plan) {
+    const fd = new FormData();
+    fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+    fd.append('plan', plan);
+    fetch('/stripe/checkout/', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        if (data.url) window.location.href = data.url;
+        else alert(data.error || 'Could not start checkout.');
+      });
+  }
+
+  const dropZone     = document.getElementById('dash-drop-zone');
+  const fileInput    = document.getElementById('dash-file-input');
+  const progress     = document.getElementById('upload-progress');
+  const progressFill = document.getElementById('progress-fill');
+  const progressLabel= document.getElementById('progress-label');
+  const errorEl      = document.getElementById('upload-error');
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type === 'application/pdf') handleUpload(file);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleUpload(fileInput.files[0]);
+  });
+
+  function handleUpload(file) {
+    errorEl.style.display = 'none';
+    progress.style.display = 'block';
+    progressFill.style.width = '15%';
+    progressLabel.textContent = 'Uploading…';
+
+    const fd = new FormData();
+    fd.append('pdf', file);
+    fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+    fetch('/api/upload/', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        progressFill.style.width = '100%';
+        if (data.error) {
+          progress.style.display = 'none';
+          errorEl.textContent = data.error;
+          errorEl.style.display = 'flex';
+          return;
+        }
+        progressLabel.textContent = 'Done — opening editor…';
+        const reader = new FileReader();
+        reader.onload = ev => {
+          const b64 = ev.target.result.split(',')[1];
+          sessionStorage.setItem('toc_pdf_b64', b64);
+          sessionStorage.setItem('toc_api_data', JSON.stringify(data));
+          sessionStorage.setItem('toc_filename', file.name);
+          window.location.href = '/dashboard/editor/';
+        };
+        reader.readAsDataURL(file);
+      })
+      .catch(() => {
+        progress.style.display = 'none';
+        errorEl.textContent = 'Upload failed. Please try again.';
+        errorEl.style.display = 'flex';
+      });
+  }
+</script>
+{% endblock %}

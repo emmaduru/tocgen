@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+{% block title %}TOC Generator — Add a Table of Contents to Any PDF{% endblock %}
+
+{% block extra_css %}
+  /* ── Hero ── */
+  .hero {
+    padding: 80px 24px 60px;
+    text-align: center;
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  .hero-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(79,142,247,.1); border: 1px solid rgba(79,142,247,.2);
+    color: var(--accent); border-radius: 20px;
+    padding: 4px 14px; font-size: .78rem; font-weight: 600;
+    letter-spacing: .05em; text-transform: uppercase; margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-size: clamp(2rem, 5vw, 3.4rem);
+    font-weight: 800; line-height: 1.15;
+    letter-spacing: -.02em;
+    background: linear-gradient(135deg, #e2e6f0 0%, #8b92a9 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 20px;
+  }
+  .hero h1 span {
+    background: linear-gradient(135deg, #4f8ef7, #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero-sub { font-size: 1.1rem; color: var(--text2); max-width: 560px; margin: 0 auto 36px; }
+  .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .hero-features {
+    display: flex; gap: 24px; justify-content: center; flex-wrap: wrap;
+    margin-top: 40px; padding-top: 40px;
+    border-top: 1px solid var(--border);
+  }
+  .hero-feature { display: flex; align-items: center; gap: 8px; font-size: .85rem; color: var(--text2); }
+  .hero-feature .dot { width: 8px; height: 8px; background: var(--green); border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Upload demo area ── */
+  .demo-wrap {
+    max-width: 680px;
+    margin: 0 auto 80px;
+    padding: 0 24px;
+  }
+  .upload-zone {
+    display: block;
+    border: 2px dashed var(--border2);
+    border-radius: var(--radius-lg);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    background: var(--bg2);
+    color: inherit;
+    font: inherit;
+    user-select: none;
+    box-sizing: border-box;
+  }
+  .upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); background: rgba(79,142,247,.05); }
+  .upload-zone-icon { font-size: 2.5rem; margin-bottom: 12px; }
+  .upload-zone h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 6px; }
+  .upload-zone p  { color: var(--text2); font-size: .875rem; margin: 0; }
+  .upload-limit-note { font-size: .75rem; color: var(--text3); margin-top: 10px; }
+  #upload-progress { display: none; margin-top: 16px; }
+  .progress-bar-wrap { background: var(--bg3); border-radius: 6px; height: 6px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; background: var(--accent); border-radius: 6px; transition: width .3s; }
+  #upload-error { display: none; }
+
+  /* ── Section headings ── */
+  .section { padding: 60px 24px; max-width: 1100px; margin: 0 auto; }
+  .section-header { text-align: center; margin-bottom: 48px; }
+  .section-header h2 { font-size: clamp(1.5rem, 3vw, 2.2rem); font-weight: 700; letter-spacing: -.02em; margin-bottom: 10px; }
+  .section-header p  { color: var(--text2); font-size: 1rem; max-width: 520px; margin: 0 auto; }
+
+  /* ── Pricing ── */
+  .pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+  }
+  .pricing-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 28px 24px;
+    position: relative;
+    display: flex; flex-direction: column;
+    transition: border-color .2s, transform .15s;
+  }
+  .pricing-card:hover { transform: translateY(-2px); }
+  .pricing-card.featured { border-color: var(--accent); background: rgba(79,142,247,.05); }
+  .pricing-card.premium-card { border-color: var(--purple); background: rgba(167,139,250,.05); }
+  .pricing-popular {
+    position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+    background: var(--accent); color: #fff;
+    padding: 3px 14px; border-radius: 20px; font-size: .72rem; font-weight: 700;
+    white-space: nowrap;
+  }
+  .pricing-name { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); margin-bottom: 10px; }
+  .pricing-price { font-size: 2.4rem; font-weight: 800; letter-spacing: -.03em; line-height: 1; margin-bottom: 4px; }
+  .pricing-price sup { font-size: 1.1rem; vertical-align: super; font-weight: 600; }
+  .pricing-period { font-size: .8rem; color: var(--text2); margin-bottom: 20px; }
+  .pricing-features { list-style: none; padding: 0; flex: 1; margin-bottom: 24px; }
+  .pricing-features li {
+    font-size: .875rem; color: var(--text2); padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .pricing-features li:last-child { border-bottom: none; }
+  .pricing-features .check { color: var(--green); font-size: .9rem; flex-shrink: 0; }
+  .pricing-features .cross { color: var(--text3); font-size: .9rem; flex-shrink: 0; }
+  .pricing-features .feature-text { flex: 1; }
+
+  /* ── FAQ ── */
+  .faq-list { max-width: 720px; margin: 0 auto; }
+  .faq-item {
+    border-bottom: 1px solid var(--border);
+    padding: 0;
+  }
+  .faq-q {
+    width: 100%; background: none; border: none; color: var(--text);
+    text-align: left; font-size: .95rem; font-weight: 500;
+    padding: 20px 0; cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    font-family: inherit;
+  }
+  .faq-q:hover { color: var(--accent); }
+  .faq-chevron { color: var(--text3); transition: transform .2s; flex-shrink: 0; }
+  .faq-item.open .faq-chevron { transform: rotate(180deg); }
+  .faq-a { display: none; padding-bottom: 16px; color: var(--text2); font-size: .9rem; line-height: 1.7; }
+  .faq-item.open .faq-a { display: block; }
+
+  /* ── CTA strip ── */
+  .cta-strip {
+    background: linear-gradient(135deg, rgba(79,142,247,.08), rgba(167,139,250,.08));
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-lg);
+    padding: 48px 40px;
+    text-align: center;
+    max-width: 680px;
+    margin: 0 auto 80px;
+  }
+  .cta-strip h2 { font-size: 1.7rem; font-weight: 700; margin-bottom: 10px; }
+  .cta-strip p  { color: var(--text2); margin-bottom: 24px; }
+
+  @media (max-width: 640px) {
+    .pricing-grid { grid-template-columns: 1fr 1fr; }
+    .hero-actions { flex-direction: column; align-items: center; }
+    .cta-strip { padding: 32px 20px; }
+  }
+  @media (max-width: 440px) {
+    .pricing-grid { grid-template-columns: 1fr; }
+  }
+{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-eyebrow">✦ No file storage &nbsp;·&nbsp; Privacy first</div>
+  <h1>Add a <span>Table of Contents</span><br>to any PDF instantly</h1>
+  <p class="hero-sub">Upload your PDF, edit the automatically extracted headings, and export a beautifully formatted TOC — all in your browser. Your files never touch our servers.</p>
+  <div class="hero-actions">
+    <a href="/accounts/signup/" class="btn btn-primary btn-lg">Get started free →</a>
+    <a href="#pricing" class="btn btn-secondary btn-lg">View pricing</a>
+  </div>
+  <div class="hero-features">
+    <div class="hero-feature"><div class="dot"></div> Files processed in-browser only</div>
+    <div class="hero-feature"><div class="dot"></div> Clickable TOC with bookmarks</div>
+    <div class="hero-feature"><div class="dot"></div> Drag-and-drop page reordering</div>
+    <div class="hero-feature"><div class="dot"></div> No account needed to try</div>
+  </div>
+</section>
+
+<!-- Quick try upload -->
+<div class="demo-wrap">
+  <input type="file" id="demo-file-input" accept=".pdf" style="position:absolute;left:-9999px;opacity:0;">
+  <label for="demo-file-input" class="upload-zone" id="demo-drop-zone">
+    <div class="upload-zone-icon">📄</div>
+    <h3>Drop a PDF here to try it</h3>
+    <p>Or click to browse — no sign-up required</p>
+    <div class="upload-limit-note">Anonymous: up to 5 MB · 1 upload/day</div>
+  </label>
+  <div id="upload-progress">
+    <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progress-fill" style="width:0%"></div></div>
+    <p class="text-muted text-small mt-1" id="progress-label">Uploading…</p>
+  </div>
+  <div class="alert alert-error mt-2" id="upload-error"></div>
+</div>
+
+<!-- Pricing -->
+<div class="section" id="pricing">
+  <div class="section-header">
+    <h2>Simple, transparent pricing</h2>
+    <p>Start free with no credit card. Upgrade when you need more power.</p>
+  </div>
+
+  <div class="pricing-grid">
+    <!-- Anonymous -->
+    <div class="pricing-card">
+      <div class="pricing-name">Guest</div>
+      <div class="pricing-price">Free</div>
+      <div class="pricing-period">No account needed</div>
+      <ul class="pricing-features">
+        <li><span class="check">✓</span><span class="feature-text">5 MB max file size</span></li>
+        <li><span class="check">✓</span><span class="feature-text">1 upload per day</span></li>
+        <li><span class="cross">✗</span><span class="feature-text" style="color:var(--text3)">Watermarked export</span></li>
+        <li><span class="cross">✗</span><span class="feature-text" style="color:var(--text3)">No account</span></li>
+      </ul>
+      <a href="#demo-drop-zone" class="btn btn-secondary w-full" style="justify-content:center;">Try now</a>
+    </div>
+
+    <!-- Free -->
+    <div class="pricing-card">
+      <div class="pricing-name">Free</div>
+      <div class="pricing-price">Free</div>
+      <div class="pricing-period">With free account</div>
+      <ul class="pricing-features">
+        <li><span class="check">✓</span><span class="feature-text">10 MB max file size</span></li>
+        <li><span class="check">✓</span><span class="feature-text">5 uploads per day</span></li>
+        <li><span class="cross">✗</span><span class="feature-text" style="color:var(--text3)">Watermarked export</span></li>
+        <li><span class="check">✓</span><span class="feature-text">Upload history</span></li>
+      </ul>
+      <a href="/accounts/signup/" class="btn btn-secondary w-full" style="justify-content:center;">Sign up free</a>
+    </div>
+
+    <!-- Pro -->
+    <div class="pricing-card featured">
+      <div class="pricing-popular">Most popular</div>
+      <div class="pricing-name" style="color:var(--accent)">Pro</div>
+      <div class="pricing-price"><sup>$</sup>9</div>
+      <div class="pricing-period">per month</div>
+      <ul class="pricing-features">
+        <li><span class="check">✓</span><span class="feature-text">250 MB max file size</span></li>
+        <li><span class="check">✓</span><span class="feature-text">Unlimited uploads</span></li>
+        <li><span class="check">✓</span><span class="feature-text"><strong>No watermark</strong></span></li>
+        <li><span class="check">✓</span><span class="feature-text">Priority processing</span></li>
+      </ul>
+      <button class="btn btn-primary w-full" style="justify-content:center;" onclick="startCheckout('pro')">Upgrade to Pro</button>
+    </div>
+
+    <!-- Premium -->
+    <div class="pricing-card premium-card">
+      <div class="pricing-name" style="color:var(--purple)">Premium</div>
+      <div class="pricing-price" style="background:linear-gradient(135deg,#a78bfa,#4f8ef7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;"><sup style="-webkit-text-fill-color:var(--purple)">$</sup>24</div>
+      <div class="pricing-period">per month</div>
+      <ul class="pricing-features">
+        <li><span class="check">✓</span><span class="feature-text">1 GB max file size</span></li>
+        <li><span class="check">✓</span><span class="feature-text">Unlimited uploads</span></li>
+        <li><span class="check">✓</span><span class="feature-text"><strong>No watermark</strong></span></li>
+        <li><span class="check">✓</span><span class="feature-text">All future features</span></li>
+      </ul>
+      <button class="btn w-full" style="justify-content:center;background:rgba(167,139,250,.15);color:var(--purple);border:1px solid rgba(167,139,250,.3);" onclick="startCheckout('premium')">Upgrade to Premium</button>
+    </div>
+  </div>
+</div>
+
+<!-- FAQ -->
+<div class="section" id="faq" style="padding-top:0;">
+  <div class="section-header">
+    <h2>Frequently asked questions</h2>
+  </div>
+  <div class="faq-list">
+
+    {% for faq in faqs %}
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggleFaq(this)">
+        {{ faq.q }}
+        <svg class="faq-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="faq-a">{{ faq.a }}</div>
+    </div>
+    {% endfor %}
+
+  </div>
+</div>
+
+<!-- CTA -->
+<div style="padding:0 24px;">
+<div class="cta-strip">
+  <h2>Ready to get started?</h2>
+  <p>Free forever for small files. No credit card required.</p>
+  <a href="/accounts/signup/" class="btn btn-primary btn-lg">Create your free account →</a>
+</div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // ── FAQ accordion ──
+  function toggleFaq(btn) {
+    const item = btn.closest('.faq-item');
+    item.classList.toggle('open');
+  }
+
+  // ── Pricing checkout (redirects to login if not authenticated) ──
+  function startCheckout(plan) {
+    {% if user.is_authenticated %}
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/stripe/checkout/';
+      const csrf = document.createElement('input');
+      csrf.type = 'hidden'; csrf.name = 'csrfmiddlewaretoken';
+      csrf.value = '{{ csrf_token }}';
+      const planInput = document.createElement('input');
+      planInput.type = 'hidden'; planInput.name = 'plan'; planInput.value = plan;
+      form.append(csrf, planInput);
+      document.body.appendChild(form);
+
+      // Use fetch to get the checkout URL from our view
+      fetch('/stripe/checkout/', {
+        method: 'POST',
+        body: new FormData(form),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.url) window.location.href = data.url;
+        else alert(data.error || 'Could not start checkout.');
+      });
+    {% else %}
+      window.location.href = '/accounts/signup/?next=/dashboard/';
+    {% endif %}
+  }
+
+  // ── Demo upload zone ──
+  const dropZone      = document.getElementById('demo-drop-zone');
+  const fileInput     = document.getElementById('demo-file-input');
+  const progress      = document.getElementById('upload-progress');
+  const progressFill  = document.getElementById('progress-fill');
+  const progressLabel = document.getElementById('progress-label');
+  const errorEl       = document.getElementById('upload-error');
+
+  // The zone is a <label for="demo-file-input"> so clicks open the picker natively.
+  // We only need drag-and-drop listeners; do NOT call fileInput.click() here
+  // or the browser opens the dialog twice and immediately dismisses it.
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+  dropZone.addEventListener('dragleave', e => {
+    if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('dragover');
+  });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) handleUpload(file);
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleUpload(fileInput.files[0]);
+  });
+
+  function handleUpload(file) {
+    errorEl.style.display = 'none';
+    progress.style.display = 'block';
+    progressFill.style.width = '20%';
+    progressLabel.textContent = 'Uploading…';
+
+    const fd = new FormData();
+    fd.append('pdf', file);
+    fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+    fetch('/api/upload/', { method: 'POST', body: fd })
+      .then(r => r.json())
+      .then(data => {
+        progressFill.style.width = '100%';
+        if (data.error) {
+          progress.style.display = 'none';
+          errorEl.textContent = data.error;
+          errorEl.style.display = 'flex';
+          return;
+        }
+        progressLabel.textContent = 'Processing complete — opening editor…';
+        // Store in sessionStorage and redirect to editor
+        const reader = new FileReader();
+        reader.onload = e => {
+          const b64 = e.target.result.split(',')[1];
+          sessionStorage.setItem('toc_pdf_b64', b64);
+          sessionStorage.setItem('toc_api_data', JSON.stringify(data));
+          sessionStorage.setItem('toc_filename', file.name);
+          window.location.href = '/dashboard/editor/';
+        };
+        reader.readAsDataURL(file.slice(0, file.size)); // read original file
+      })
+      .catch(() => {
+        progress.style.display = 'none';
+        errorEl.textContent = 'Upload failed. Please try again.';
+        errorEl.style.display = 'flex';
+      });
+  }
+</script>
+{% endblock %}

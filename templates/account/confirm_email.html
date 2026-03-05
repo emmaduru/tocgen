@@ -1,0 +1,15 @@
+{% extends "account/base.html" %}
+{% block title %}Confirm email — TOC Generator{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card" style="text-align:center;">
+    <div style="font-size:3rem;margin-bottom:16px;">✅</div>
+    <h1>Confirm your email</h1>
+    <p class="auth-sub">Please confirm that <strong>{{ confirmation.email_address.email }}</strong> is your email address.</p>
+    <form method="post">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary btn-lg" style="justify-content:center;">Confirm email address</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
